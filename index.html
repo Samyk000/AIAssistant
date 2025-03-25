@@ -8,6 +8,9 @@
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🚀</text></svg>">
     
+    <!-- Meta Theme Color for Mobile -->
+    <meta name="theme-color" content="#4361ee">
+    
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     
@@ -16,8 +19,12 @@
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="style.css">
+    
+    <!-- Defer loading scripts until DOM is ready -->
+    <script src="script.js" defer></script>
+    <script src="preview.js" defer></script>
 </head>
-<body>
+<body data-font-size="medium">
     <!-- Overlay -->
     <div class="overlay" id="overlay"></div>
 
@@ -27,7 +34,7 @@
             <div class="sidebar-header">
                 <div class="sidebar-title">
                     <i class="fas fa-rocket"></i>
-                    <h2>CodeCraft AI</h2>
+                    <h2>CodeCraft <span class="accent">AI</span></h2>
                 </div>
                 <button class="close-sidebar" id="closeSidebarBtn" aria-label="Close Sidebar">
                     <i class="fas fa-times"></i>
@@ -36,7 +43,7 @@
 
             <button class="new-chat-btn" id="newChatBtn">
                 <i class="fas fa-plus"></i>
-                New Chat
+                <span>New Chat</span>
             </button>
 
             <div class="chat-list" id="chatList">
@@ -111,7 +118,7 @@
                         placeholder="Ask me anything about coding..." 
                         rows="1"
                     ></textarea>
-                    <button class="send-btn" id="sendBtn" aria-label="Send Message">
+                    <button class="send-btn" id="sendBtn" aria-label="Send Message" title="Send message">
                         <i class="fas fa-paper-plane"></i>
                         <div class="loading-spinner hidden">
                             <div class="spinner"></div>
@@ -169,7 +176,5 @@
         </div>
     </div>
 
-    <!-- Scripts -->
-    <script src="script.js"></script>
 </body>
 </html>
