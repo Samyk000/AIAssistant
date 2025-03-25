@@ -16,10 +16,12 @@ const CONFIG = {
                 8. When providing code, wrap it in proper code blocks with language specification
                 9. Focus on performance, accessibility, and user experience
                 10. Explain complex concepts in simple terms
+                11. Always include necessary CDN libraries for frameworks and tools (Bootstrap, jQuery, React, Vue, etc.)
+                12. Automatically add required dependencies to make code work immediately
 
                 Important: When users ask for code files, provide them separately and clearly marked, like:
                 \`\`\`html
-                <!-- HTML code here -->
+                <!-- HTML code here with all necessary CDN links in the head -->
                 \`\`\`
 
                 \`\`\`css
@@ -52,6 +54,8 @@ class ChatInterface {
         this.chats = this.loadChats() || {};
         this.currentChatId = null;
         this.isProcessing = false;
+        this.isGenerating = false;
+        this.abortController = null;
         this.settings = this.loadSettings();
         this.initializeElements();
         this.initializeEventListeners();
@@ -159,14 +163,23 @@ class ChatInterface {
 
     async handleSendMessage() {
         const message = this.elements.messageInput.value.trim();
+        
+        // If currently generating, stop the generation
+        if (this.isGenerating) {
+            this.stopGeneration();
+            return;
+        }
+        
         if (!message || this.isProcessing) return;
 
         this.isProcessing = true;
+        this.isGenerating = true;
         this.elements.messageInput.value = '';
         this.autoResizeTextarea();
-        this.elements.sendBtn.disabled = true;
-        this.elements.loadingSpinner.classList.remove('hidden');
-
+        
+        // Change send button to stop button
+        this.updateSendButtonToStop(true);
+        
         try {
             // Create user message element
             const userMessageDiv = this.createMessageElement('user', message);
@@ -182,12 +195,36 @@ class ChatInterface {
             
         } catch (error) {
             console.error('Error:', error);
-            this.createMessageElement('system', 'Sorry, there was an error. Please try again.');
+            if (error.name !== 'AbortError') {
+                this.createMessageElement('system', 'Sorry, there was an error. Please try again.');
+            }
         } finally {
             this.isProcessing = false;
-            this.elements.sendBtn.disabled = false;
-            this.elements.loadingSpinner.classList.add('hidden');
+            this.isGenerating = false;
+            this.updateSendButtonToStop(false);
             this.saveChats();
+        }
+    }
+    
+    updateSendButtonToStop(isGenerating) {
+        const sendBtn = this.elements.sendBtn;
+        if (isGenerating) {
+            sendBtn.innerHTML = '<i class="fas fa-stop"></i>';
+            sendBtn.classList.add('stop-generating');
+            sendBtn.title = 'Stop generating';
+            this.elements.loadingSpinner.classList.remove('hidden');
+        } else {
+            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+            sendBtn.classList.remove('stop-generating');
+            sendBtn.title = 'Send message';
+            this.elements.loadingSpinner.classList.add('hidden');
+        }
+    }
+    
+    stopGeneration() {
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
         }
     }
 
@@ -217,23 +254,49 @@ class ChatInterface {
         return text
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/`([^`]+)`/g, '<code>$1</code>')
-            .replace(/\n/g, '<br>');
+            .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
+            .replace(/\n/g, '<br>')
+            .replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
     }
 
     async getAIResponse(userMessage) {
         const model = CONFIG.MODELS[this.currentModel];
         const chatHistory = this.chats[this.currentChatId].messages;
         
+        // Optimize model temperature for faster responses
+        const optimizedModel = {
+            ...model,
+            temperature: this.currentModel === 'deepseek' ? 0.2 : 0.5 // Lower temperature for faster, more deterministic responses
+        };
+        
         const messages = [
-            { role: 'system', content: model.context },
+            { role: 'system', content: optimizedModel.context },
             ...chatHistory.map(msg => ({
                 role: msg.type === 'user' ? 'user' : 'assistant',
                 content: msg.content
             }))
         ];
 
+        // Create AI message with typing indicator immediately
+        const messageDiv = this.createMessageElement('ai', '');
+        const messageContent = messageDiv.querySelector('.message-content');
+        
+        // Add typing indicator
+        const typingIndicator = document.createElement('div');
+        typingIndicator.className = 'typing-indicator';
+        typingIndicator.innerHTML = '<span></span><span></span><span></span>';
+        messageContent.appendChild(typingIndicator);
+        
+        // Force scroll to bottom to ensure the typing indicator is visible
+        this.scrollToBottom();
+        
+        // Ensure the message is visible immediately
+        setTimeout(() => this.scrollToBottom(), 100);
+
         try {
+            // Create a new AbortController for this request
+            this.abortController = new AbortController();
+            
             const response = await fetch(CONFIG.API_ENDPOINT, {
                 method: 'POST',
                 headers: {
@@ -244,9 +307,11 @@ class ChatInterface {
                 body: JSON.stringify({
                     model: model.id,
                     messages: messages,
-                    temperature: model.temperature,
-                    stream: true
-                })
+                    temperature: optimizedModel.temperature,
+                    stream: true,
+                    max_tokens: 4096 // Increased token limit for more complete responses
+                }),
+                signal: this.abortController.signal // Add abort signal to the fetch request
             });
 
             if (!response.ok) throw new Error(`API Error: ${response.status}`);
@@ -254,7 +319,9 @@ class ChatInterface {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let responseText = '';
-            let messageDiv = null;
+            
+            // Remove typing indicator when we get the first chunk
+            let firstChunk = true;
             
             while (true) {
                 const { done, value } = await reader.read();
@@ -273,8 +340,10 @@ class ChatInterface {
                                 const content = data.choices[0].delta.content;
                                 responseText += content;
                                 
-                                if (!messageDiv) {
-                                    messageDiv = this.createMessageElement('ai', '');
+                                if (firstChunk) {
+                                    // Remove typing indicator on first content
+                                    messageContent.innerHTML = '';
+                                    firstChunk = false;
                                 }
                                 
                                 this.updateStreamingMessage(messageDiv, responseText);
@@ -297,10 +366,26 @@ class ChatInterface {
                 if (this.chats[this.currentChatId].messages.length === 2) {
                     this.updateChatTitle(responseText);
                 }
+                
+                // Add preview button if the message contains HTML, CSS, or JS code blocks
+                if (window.codePreview && responseText.includes('```')) {
+                    window.codePreview.addPreviewButtonToMessage(messageDiv);
+                }
             }
 
         } catch (error) {
-            throw new Error('Failed to get AI response: ' + error.message);
+            // Remove typing indicator and show error
+            if (messageContent.querySelector('.typing-indicator')) {
+                if (error.name === 'AbortError') {
+                    messageContent.innerHTML = 'Generation stopped.';
+                } else {
+                    messageContent.innerHTML = 'Error: Failed to get response. Please try again.';
+                }
+            }
+            throw error; // Rethrow to be handled by the caller
+        } finally {
+            // Clear the abort controller
+            this.abortController = null;
         }
     }
 
@@ -309,14 +394,25 @@ class ChatInterface {
         
         // Check if content contains code blocks
         if (content.includes('```')) {
-            const parts = content.split(/(```[\s\S]*?```)/g);
+            // Split content into text and code blocks
+            const parts = content.split(/(```[\s\S]*?(?:```|$))/g);
             messageContent.innerHTML = '';
             
-            parts.forEach(part => {
+            parts.forEach((part, index) => {
+                // Handle complete code blocks
                 if (part.startsWith('```') && part.endsWith('```')) {
                     const codeBlock = this.createCodeBlock(part);
                     messageContent.appendChild(codeBlock);
-                } else {
+                } 
+                // Handle incomplete code blocks (still being streamed)
+                else if (part.startsWith('```') && !part.endsWith('```')) {
+                    // Create a temporary code block for the incomplete code
+                    const tempCodeBlock = this.createIncompleteCodeBlock(part);
+                    tempCodeBlock.dataset.partIndex = index; // Store index for future updates
+                    messageContent.appendChild(tempCodeBlock);
+                } 
+                // Handle regular text
+                else if (part.trim() !== '') {
                     const textNode = document.createElement('div');
                     textNode.innerHTML = this.formatText(part);
                     messageContent.appendChild(textNode);
@@ -329,11 +425,55 @@ class ChatInterface {
         this.scrollToBottom();
     }
 
+    // Helper method to create a code block for incomplete code that's still streaming
+    createIncompleteCodeBlock(codeContent) {
+        // Extract language if specified
+        const langMatch = codeContent.match(/```([\w-]*)?\s*\n?/);
+        let language = langMatch && langMatch[1] ? langMatch[1].trim() : 'plaintext';
+        
+        // Handle common language aliases
+        if (language === 'js') language = 'javascript';
+        if (language === 'py') language = 'python';
+        if (language === 'ts') language = 'typescript';
+        
+        // Extract the code content without the opening ```language
+        const codeWithoutOpening = codeContent.replace(/```([\w-]*)?\s*\n?/, '');
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'code-block streaming-code';
+        
+        const header = document.createElement('div');
+        header.className = 'code-header';
+        header.innerHTML = `
+            <span>${language}</span>
+            <button class="copy-btn">Copy</button>
+        `;
+        
+        const pre = document.createElement('pre');
+        const codeElement = document.createElement('code');
+        codeElement.className = `language-${language}`;
+        codeElement.textContent = codeWithoutOpening;
+        pre.appendChild(codeElement);
+
+        header.querySelector('.copy-btn').onclick = () => this.copyToClipboard(codeWithoutOpening, header.querySelector('.copy-btn'));
+
+        wrapper.appendChild(header);
+        wrapper.appendChild(pre);
+
+        return wrapper;
+    }
+
     createCodeBlock(codeContent) {
-        const match = codeContent.match(/```(\w+)?\n([\s\S]*?)```/);
+        // Improved regex to handle various code block formats
+        const match = codeContent.match(/```([\w-]*)?\s*\n?([\s\S]*?)```/);
         if (!match) return document.createElement('div');
 
-        const language = match[1] || 'plaintext';
+        let language = match[1] ? match[1].trim() : 'plaintext';
+        // Handle common language aliases
+        if (language === 'js') language = 'javascript';
+        if (language === 'py') language = 'python';
+        if (language === 'ts') language = 'typescript';
+        
         const code = match[2].trim();
 
         const wrapper = document.createElement('div');
@@ -563,7 +703,14 @@ class ChatInterface {
     }
 
     scrollToBottom() {
-        this.elements.chatContainer.scrollTop = this.elements.chatContainer.scrollHeight;
+        // Use requestAnimationFrame to ensure DOM updates have completed
+        requestAnimationFrame(() => {
+            this.elements.chatContainer.scrollTop = this.elements.chatContainer.scrollHeight;
+            // Double-check scroll position after a short delay
+            setTimeout(() => {
+                this.elements.chatContainer.scrollTop = this.elements.chatContainer.scrollHeight;
+            }, 50);
+        });
     }
 }
 
@@ -580,5 +727,13 @@ window.addEventListener('error', (event) => {
         window.chatInterface.isProcessing = false;
         window.chatInterface.elements.sendBtn.disabled = false;
         window.chatInterface.elements.loadingSpinner.classList.add('hidden');
+    }
+});
+
+// Handle unhandled promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+    if (window.chatInterface) {
+        window.chatInterface.createMessageElement('system', 'A network error occurred. Please check your connection and try again.');
     }
 });
