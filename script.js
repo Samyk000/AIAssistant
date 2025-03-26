@@ -1,49 +1,103 @@
 // Configuration
 const CONFIG = {
-    API_KEY: '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',
+    API_KEY: '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',
     API_ENDPOINT: 'https://openrouter.ai/api/v1/chat/completions',
     MODELS: {
         deepseek: {
             id: 'deepseek/deepseek-chat-v3-0324:free',
-            context: `You are CodeCraft AI, an expert coding assistant specializing in web development. Your responses should be:
-                1. Clear, concise, and focused on practical solutions
-                2. When asked for code, provide complete, working solutions
-                3. For website or feature requests, provide separate HTML, CSS, and JavaScript files
-                4. Include error handling and responsive design
-                5. Follow modern best practices and standards
-                6. Format code properly with appropriate comments
-                7. Be friendly and conversational while maintaining professionalism
-                8. When providing code, wrap it in proper code blocks with language specification
-                9. Focus on performance, accessibility, and user experience
-                10. Explain complex concepts in simple terms
-                11. Always include necessary CDN libraries for frameworks and tools (Bootstrap, jQuery, React, Vue, etc.)
-                12. Automatically add required dependencies to make code work immediately
+            context: `You are CodeCraft AI, an elite full-stack development assistant specializing in creating exceptional web applications. Your responses must deliver:
 
-                Important: When users ask for code files, provide them separately and clearly marked, like:
+                CODE QUALITY & ARCHITECTURE:
+                1. Production-ready, scalable, and maintainable code following SOLID principles
+                2. Modern architectural patterns (MVC, MVVM, Component-based, etc.)
+                3. Clean code with proper separation of concerns
+                4. Comprehensive error handling, input validation, and security measures
+                5. Performance optimization (lazy loading, code splitting, caching strategies)
+                6. TypeScript/ES6+ best practices with proper typing
+                7. Automated testing suggestions (unit, integration, E2E)
+                8. Git-friendly code structure with .gitignore recommendations
+
+                UI/UX EXCELLENCE:
+                1. Modern, responsive designs using CSS Grid/Flexbox
+                2. Mobile-first approach with fluid typography
+                3. Micro-interactions and smooth animations
+                4. Consistent visual hierarchy and spacing systems
+                5. Accessibility (WCAG 2.1 AA compliance)
+                6. Dark/Light theme compatibility
+                7. Loading states and error handling UX
+                8. Progressive enhancement principles
+
+                MODERN WEB FEATURES:
+                1. PWA capabilities with service workers
+                2. LocalStorage/IndexedDB for offline functionality
+                3. API integration with proper error handling
+                4. Real-time features with WebSocket/SSE
+                5. Modern build tools (Vite, Webpack) configuration
+                6. SEO optimization and meta tags
+                7. Analytics and performance monitoring
+                8. Cross-browser compatibility
+
+                FRAMEWORK EXPERTISE:
+                1. React (Next.js, hooks, context, Redux)
+                2. Vue (Nuxt.js, Composition API, Pinia)
+                3. Modern CSS (Tailwind, SCSS, CSS Modules)
+                4. Component libraries integration
+                5. State management best practices
+                6. Server-side rendering optimization
+                7. API route handlers and middleware
+                8. Database integration patterns
+
+                OUTPUT FORMAT:
+                Always provide code in separate, properly marked blocks:
                 \`\`\`html
-                <!-- HTML code here with all necessary CDN links in the head -->
+                <!-- index.html with meta tags, CDN links -->
                 \`\`\`
 
                 \`\`\`css
-                /* CSS code here */
+                /* styles.css with responsive design */
                 \`\`\`
 
                 \`\`\`javascript
-                // JavaScript code here
+                // script.js with modern practices
                 \`\`\`
-            `,
-            temperature: 0.3
+
+                For component frameworks:
+                - Proper file/folder structure
+                - Component composition
+                - Props/State management
+                - Type definitions
+                - Style modules
+                - Unit tests`,
+            temperature: 0.3,
+            top_p: 0.95,
+            frequency_penalty: 0.1,
+            presence_penalty: 0.1
         },
         gemma: {
             id: 'google/gemma-3-27b-it:free',
-            context: `You are CodeCraft AI, a helpful assistant with expertise in general knowledge and analysis. Your responses should be:
-                1. Informative and accurate
-                2. Well-structured and easy to understand
-                3. Include relevant examples when needed
-                4. Be conversational and engaging
-                5. Provide balanced perspectives
-                When discussing code or technical topics, focus on high-level understanding and practical applications.`,
-            temperature: 0.7
+            context: `You are CodeCraft AI, an advanced analytical assistant specializing in:
+                1. Clear, comprehensive explanations
+                2. Step-by-step problem-solving
+                3. Conceptual understanding of complex topics
+                4. Architecture and system design discussions
+                5. Best practices and industry standards
+                6. Performance optimization strategies
+                7. Security considerations
+                8. Code review and improvement suggestions
+                9. Database design and optimization
+                10. API design principles
+
+                Your responses should:
+                - Break down complex concepts into understandable parts
+                - Provide relevant examples and use cases
+                - Include diagrams/flowcharts descriptions when helpful
+                - Cite industry standards and best practices
+                - Suggest alternative approaches when relevant
+                - Consider scalability and maintainability`,
+            temperature: 0.7,
+            top_p: 0.9,
+            frequency_penalty: 0.2,
+            presence_penalty: 0.2
         }
     }
 };
@@ -263,8 +317,21 @@ class ChatInterface {
         const model = CONFIG.MODELS[this.currentModel];
         const chatHistory = this.chats[this.currentChatId].messages;
         
+        // Enhanced contexts for both models
+        const enhancedContext = this.currentModel === 'deepseek' ? 
+            `${model.context}\nPrevious conversation context: The user has been discussing ${this.chats[this.currentChatId].title}. Maintain consistent coding style and explanations.` :
+            `${model.context}\nPrevious conversation summary: ${this.chats[this.currentChatId].title}. Provide clear and concise explanations while maintaining context.`;
+        
+        const messages = [
+            { role: 'system', content: enhancedContext },
+            ...chatHistory.map(msg => ({
+                role: msg.type === 'user' ? 'user' : 'assistant',
+                content: msg.content
+            }))
+        ];
+
         // Use a higher max_tokens limit for longer responses
-        const maxTokens = 8192;
+        const maxTokens = 16384; // Increased from 8192
         
         // Create optimized model settings
         const optimizedModel = {
@@ -272,14 +339,6 @@ class ChatInterface {
             temperature: 0.7 // Balanced temperature for consistent responses
         };
         
-        const messages = [
-            { role: 'system', content: optimizedModel.context },
-            ...chatHistory.map(msg => ({
-                role: msg.type === 'user' ? 'user' : 'assistant',
-                content: msg.content
-            }))
-        ];
-
         // Create AI message element
         const messageDiv = this.createMessageElement('ai', '');
         const messageContent = messageDiv.querySelector('.message-content');
@@ -300,12 +359,16 @@ class ChatInterface {
                     messages: messages,
                     temperature: optimizedModel.temperature,
                     stream: true,
-                    max_tokens: maxTokens
+                    max_tokens: maxTokens,
+                    presence_penalty: 0.1, // Added to encourage more complete responses
+                    frequency_penalty: 0.1  // Added to encourage more varied content
                 }),
                 signal: this.abortController.signal
             });
 
-            if (!response.ok) throw new Error(`API Error: ${response.status}`);
+            if (!response.ok) {
+                throw new Error(`API Error: ${response.status} - ${await response.text()}`);
+            }
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
@@ -377,8 +440,8 @@ class ChatInterface {
             if (error.name === 'AbortError') {
                 messageContent.innerHTML = '<em>Generation stopped.</em>';
             } else {
-                messageContent.innerHTML = 'Error: Failed to get response. Please try again.';
                 console.error('API Error:', error);
+                messageContent.innerHTML = 'Error: Failed to get response. Please check your API key and try again.';
             }
         } finally {
             this.abortController = null;
@@ -475,14 +538,7 @@ class ChatInterface {
         
         const header = document.createElement('div');
         header.className = 'code-header';
-        header.innerHTML = `
-            <span>${language}</span>
-            <div class="code-actions">
-                ${['html', 'javascript', 'css'].includes(language) ? 
-                    '<button class="preview-code-btn" title="Preview"><i class="fas fa-play"></i> Preview</button>' : ''}
-                <button class="copy-btn" title="Copy code"><i class="fas fa-copy"></i></button>
-            </div>
-        `;
+        header.innerHTML = `<span>${language}</span>`;
         
         const pre = document.createElement('pre');
         const codeElement = document.createElement('code');
@@ -490,16 +546,25 @@ class ChatInterface {
         codeElement.textContent = code;
         pre.appendChild(codeElement);
         
-        const copyBtn = header.querySelector('.copy-btn');
+        const actions = document.createElement('div');
+        actions.className = 'code-actions';
+        actions.innerHTML = `
+            ${['html', 'javascript', 'css'].includes(language) ? 
+                '<button class="preview-code-btn" title="Preview"><i class="fas fa-play"></i> Preview</button>' : ''}
+            <button class="copy-btn" title="Copy code"><i class="fas fa-copy"></i> Copy</button>
+        `;
+        
+        const copyBtn = actions.querySelector('.copy-btn');
         copyBtn.onclick = () => this.copyToClipboard(code, copyBtn);
         
-        const previewBtn = header.querySelector('.preview-code-btn');
+        const previewBtn = actions.querySelector('.preview-code-btn');
         if (previewBtn) {
             previewBtn.onclick = () => this.previewCode(code, language);
         }
         
         wrapper.appendChild(header);
         wrapper.appendChild(pre);
+        wrapper.appendChild(actions);
         return wrapper;
     }
 
@@ -588,24 +653,33 @@ class ChatInterface {
     }
 
     switchModel(model) {
+        const previousModel = this.currentModel;
         this.currentModel = model;
         const modelName = model === 'deepseek' ? 'DeepSeek' : 'Gemma';
         const modelType = model === 'deepseek' ? 'Code Expert' : 'General AI';
         
+        // Update UI elements
         this.elements.modelDropdownBtn.querySelector('.model-name').textContent = modelName;
         this.elements.modelDropdownBtn.querySelector('.model-type').textContent = modelType;
         
         this.elements.modelOptions.forEach(option => {
             option.classList.toggle('active', option.dataset.model === model);
         });
-    }
 
-    clearCurrentChat() {
-        if (confirm('Are you sure you want to clear this chat?')) {
-            this.createNewChat();
+        // Add model switch notification
+        if (previousModel !== model) {
+            this.addModelSwitchNotification(modelName);
         }
     }
-    
+
+    addModelSwitchNotification(modelName) {
+        const notificationDiv = document.createElement('div');
+        notificationDiv.className = 'model-switch-notification';
+        notificationDiv.innerHTML = `<i class="fas fa-exchange-alt"></i> Switched to ${modelName}`;
+        this.elements.chatContainer.appendChild(notificationDiv);
+        this.scrollToBottom();
+    }
+
     deleteChat(chatId) {
         if (confirm('Are you sure you want to delete this chat?')) {
             delete this.chats[chatId];
@@ -650,7 +724,11 @@ class ChatInterface {
 
     loadChats() {
         try {
-            return JSON.parse(localStorage.getItem('chats')) || {};
+            const chats = JSON.parse(localStorage.getItem('chats')) || {};
+            Object.values(chats).forEach(chat => {
+                if (!chat.model) chat.model = 'deepseek';
+            });
+            return chats;
         } catch {
             return {};
         }
