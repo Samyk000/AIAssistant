@@ -39,6 +39,9 @@ class PreviewManager {
                             <div class="dimension-display">
                                 <span class="width-value">1920</span> × <span class="height-value">1080</span>
                             </div>
+                            <button class="open-browser-btn" title="Open in browser">
+                                <i class="fas fa-external-link-alt"></i>
+                            </button>
                         </div>
                     </div>
                     <button class="close-preview" title="Close preview">
@@ -74,6 +77,7 @@ class PreviewManager {
         const widthDisplay = modal.querySelector('.width-value');
         const heightDisplay = modal.querySelector('.height-value');
         const closeBtn = modal.querySelector('.close-preview');
+        const openBrowserBtn = modal.querySelector('.open-browser-btn');
 
         // Set initial size
         this.setPreviewSize(wrapper, this.presetSizes[this.currentDevice]);
@@ -123,6 +127,11 @@ class PreviewManager {
         closeBtn.addEventListener('click', closeModal);
         modal.addEventListener('click', (e) => {
             if (e.target === modal) closeModal();
+        });
+
+        // Open in browser
+        openBrowserBtn.addEventListener('click', () => {
+            this.openInBrowser(code, language);
         });
     }
 
@@ -226,6 +235,46 @@ class PreviewManager {
             `);
             doc.close();
         }
+    }
+
+    openInBrowser(code, language) {
+        const blob = new Blob([this.generateFullHTML(code, language)], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    generateFullHTML(code, language) {
+        if (language.toLowerCase() === 'html') {
+            return code;
+        }
+
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Preview</title>
+                <style>
+                    body { 
+                        margin: 0;
+                        min-height: 100vh;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-family: system-ui, -apple-system, sans-serif;
+                    }
+                    ${language.toLowerCase() === 'css' ? code : ''}
+                </style>
+            </head>
+            <body>
+                ${language.toLowerCase() === 'javascript' ? 
+                    `<div id="preview-content"></div><script>${code}<\/script>` : 
+                    '<div class="preview-content">Preview content</div>'}
+            </body>
+            </html>
+        `;
     }
 }
 
