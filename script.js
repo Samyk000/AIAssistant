@@ -263,10 +263,13 @@ class ChatInterface {
         const model = CONFIG.MODELS[this.currentModel];
         const chatHistory = this.chats[this.currentChatId].messages;
         
-        // Optimize model temperature for faster responses
+        // Use a higher max_tokens limit for longer responses
+        const maxTokens = 8192;
+        
+        // Create optimized model settings
         const optimizedModel = {
             ...model,
-            temperature: this.currentModel === 'deepseek' ? 0.2 : 0.5 // Lower temperature for faster, more deterministic responses
+            temperature: 0.7 // Balanced temperature for consistent responses
         };
         
         const messages = [
@@ -277,24 +280,12 @@ class ChatInterface {
             }))
         ];
 
-        // Create AI message with typing indicator immediately
+        // Create AI message element
         const messageDiv = this.createMessageElement('ai', '');
         const messageContent = messageDiv.querySelector('.message-content');
+        messageContent.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
         
-        // Add typing indicator
-        const typingIndicator = document.createElement('div');
-        typingIndicator.className = 'typing-indicator';
-        typingIndicator.innerHTML = '<span></span><span></span><span></span>';
-        messageContent.appendChild(typingIndicator);
-        
-        // Force scroll to bottom to ensure the typing indicator is visible
-        this.scrollToBottom();
-        
-        // Ensure the message is visible immediately
-        setTimeout(() => this.scrollToBottom(), 100);
-
         try {
-            // Create a new AbortController for this request
             this.abortController = new AbortController();
             
             const response = await fetch(CONFIG.API_ENDPOINT, {
@@ -309,9 +300,9 @@ class ChatInterface {
                     messages: messages,
                     temperature: optimizedModel.temperature,
                     stream: true,
-                    max_tokens: 4096 // Increased token limit for more complete responses
+                    max_tokens: maxTokens
                 }),
-                signal: this.abortController.signal // Add abort signal to the fetch request
+                signal: this.abortController.signal
             });
 
             if (!response.ok) throw new Error(`API Error: ${response.status}`);
@@ -319,17 +310,31 @@ class ChatInterface {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let responseText = '';
-            
-            // Remove typing indicator when we get the first chunk
+            let buffer = '';
             let firstChunk = true;
-            
+
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
                 
+                if (done) {
+                    // Process any remaining buffer content
+                    if (buffer) {
+                        try {
+                            const data = JSON.parse(buffer.slice(5));
+                            if (data.choices[0].delta?.content) {
+                                responseText += data.choices[0].delta.content;
+                            }
+                        } catch (e) {
+                            console.warn('Error parsing final buffer:', e);
+                        }
+                    }
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
                 for (const line of lines) {
                     if (line.trim() === '' || line.trim() === 'data: [DONE]') continue;
 
@@ -341,7 +346,6 @@ class ChatInterface {
                                 responseText += content;
                                 
                                 if (firstChunk) {
-                                    // Remove typing indicator on first content
                                     messageContent.innerHTML = '';
                                     firstChunk = false;
                                 }
@@ -349,6 +353,7 @@ class ChatInterface {
                                 this.updateStreamingMessage(messageDiv, responseText);
                             }
                         } catch (e) {
+                            console.warn('Error parsing chunk:', e);
                             continue;
                         }
                     }
@@ -366,26 +371,18 @@ class ChatInterface {
                 if (this.chats[this.currentChatId].messages.length === 2) {
                     this.updateChatTitle(responseText);
                 }
-                
-                // Add preview button if the message contains HTML, CSS, or JS code blocks
-                if (window.codePreview && responseText.includes('```')) {
-                    window.codePreview.addPreviewButtonToMessage(messageDiv);
-                }
             }
 
         } catch (error) {
-            // Remove typing indicator and show error
-            if (messageContent.querySelector('.typing-indicator')) {
-                if (error.name === 'AbortError') {
-                    messageContent.innerHTML = 'Generation stopped.';
-                } else {
-                    messageContent.innerHTML = 'Error: Failed to get response. Please try again.';
-                }
+            if (error.name === 'AbortError') {
+                messageContent.innerHTML = '<em>Generation stopped.</em>';
+            } else {
+                messageContent.innerHTML = 'Error: Failed to get response. Please try again.';
+                console.error('API Error:', error);
             }
-            throw error; // Rethrow to be handled by the caller
         } finally {
-            // Clear the abort controller
             this.abortController = null;
+            this.saveChats();
         }
     }
 
@@ -464,18 +461,15 @@ class ChatInterface {
     }
 
     createCodeBlock(codeContent) {
-        // Improved regex to handle various code block formats
         const match = codeContent.match(/```([\w-]*)?\s*\n?([\s\S]*?)```/);
         if (!match) return document.createElement('div');
 
-        let language = match[1] ? match[1].trim() : 'plaintext';
-        // Handle common language aliases
+        let language = match[1] ? match[1].trim().toLowerCase() : 'plaintext';
         if (language === 'js') language = 'javascript';
         if (language === 'py') language = 'python';
         if (language === 'ts') language = 'typescript';
         
         const code = match[2].trim();
-
         const wrapper = document.createElement('div');
         wrapper.className = 'code-block';
         
@@ -483,7 +477,11 @@ class ChatInterface {
         header.className = 'code-header';
         header.innerHTML = `
             <span>${language}</span>
-            <button class="copy-btn">Copy</button>
+            <div class="code-actions">
+                ${['html', 'javascript', 'css'].includes(language) ? 
+                    '<button class="preview-code-btn" title="Preview"><i class="fas fa-play"></i> Preview</button>' : ''}
+                <button class="copy-btn" title="Copy code"><i class="fas fa-copy"></i></button>
+            </div>
         `;
         
         const pre = document.createElement('pre');
@@ -491,13 +489,24 @@ class ChatInterface {
         codeElement.className = `language-${language}`;
         codeElement.textContent = code;
         pre.appendChild(codeElement);
-
-        header.querySelector('.copy-btn').onclick = () => this.copyToClipboard(code, header.querySelector('.copy-btn'));
-
+        
+        const copyBtn = header.querySelector('.copy-btn');
+        copyBtn.onclick = () => this.copyToClipboard(code, copyBtn);
+        
+        const previewBtn = header.querySelector('.preview-code-btn');
+        if (previewBtn) {
+            previewBtn.onclick = () => this.previewCode(code, language);
+        }
+        
         wrapper.appendChild(header);
         wrapper.appendChild(pre);
-
         return wrapper;
+    }
+
+    previewCode(code, language) {
+        if (window.previewManager) {
+            window.previewManager.createPreviewModal(code, language);
+        }
     }
 
     async copyToClipboard(text, button) {
@@ -703,14 +712,15 @@ class ChatInterface {
     }
 
     scrollToBottom() {
-        // Use requestAnimationFrame to ensure DOM updates have completed
-        requestAnimationFrame(() => {
-            this.elements.chatContainer.scrollTop = this.elements.chatContainer.scrollHeight;
-            // Double-check scroll position after a short delay
-            setTimeout(() => {
-                this.elements.chatContainer.scrollTop = this.elements.chatContainer.scrollHeight;
-            }, 50);
-        });
+        // Only auto-scroll if user is already near the bottom
+        const container = this.elements.chatContainer;
+        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+        
+        if (isNearBottom) {
+            requestAnimationFrame(() => {
+                container.scrollTop = container.scrollHeight;
+            });
+        }
     }
 }
 
