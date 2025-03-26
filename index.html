@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="theme-color" content="#4361ee" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1e1e2e" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>CodeCraft AI</title>
     
     <!-- Favicon -->
@@ -24,7 +28,7 @@
     <script src="script.js" defer></script>
     <script src="preview.js" defer></script>
 </head>
-<body data-font-size="medium">
+<body data-theme="light" data-font-size="medium">
     <!-- Overlay -->
     <div class="overlay" id="overlay"></div>
 
@@ -117,12 +121,11 @@
                         id="messageInput" 
                         placeholder="Ask me anything about coding..." 
                         rows="1"
+                        aria-label="Message input"
                     ></textarea>
-                    <button class="send-btn" id="sendBtn" aria-label="Send Message" title="Send message">
+                    <button class="send-btn" id="sendBtn" aria-label="Send message">
                         <i class="fas fa-paper-plane"></i>
-                        <div class="loading-spinner hidden">
-                            <div class="spinner"></div>
-                        </div>
+                        <div class="loading-spinner hidden"></div>
                     </button>
                 </div>
             </div>
