@@ -1,6 +1,6 @@
 // Configuration
 const CONFIG = {
-    API_KEY: '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',
+    API_KEY: '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',
     API_ENDPOINT: 'https://openrouter.ai/api/v1/chat/completions',
     MODELS: {
         deepseek: {
