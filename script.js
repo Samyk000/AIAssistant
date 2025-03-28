@@ -1,6 +1,6 @@
 // Configuration
 const CONFIG = {
-    API_KEY: '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',
+    API_KEY: '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',
     API_ENDPOINT: 'https://openrouter.ai/api/v1/chat/completions',
     MODELS: {
         deepseek: {
@@ -26,6 +26,7 @@ const CONFIG = {
                 6. Dark/Light theme compatibility
                 7. Loading states and error handling UX
                 8. Progressive enhancement principles
+                9. Use any required library (Icon, animation, chart and more using CDN)
 
                 MODERN WEB FEATURES:
                 1. PWA capabilities with service workers
@@ -106,14 +107,20 @@ class ChatInterface {
     constructor() {
         this.currentModel = 'deepseek';
         this.chats = this.loadChats() || {};
-        this.currentChatId = null;
+        this.currentChatId = localStorage.getItem('currentChatId');
         this.isProcessing = false;
         this.isGenerating = false;
         this.abortController = null;
         this.settings = this.loadSettings();
         this.initializeElements();
         this.initializeEventListeners();
-        this.createNewChat();
+        
+        // If no current chat or chat doesn't exist, create new one
+        if (!this.currentChatId || !this.chats[this.currentChatId]) {
+            this.createNewChat();
+        } else {
+            this.loadChat(this.currentChatId);
+        }
         this.applySettings();
     }
 
@@ -136,7 +143,6 @@ class ChatInterface {
             menuBtn: document.getElementById('menuBtn'),
             closeSidebarBtn: document.getElementById('closeSidebarBtn'),
             newChatBtn: document.getElementById('newChatBtn'),
-            clearChatBtn: document.getElementById('clearChatBtn'),
             settingsBtn: document.getElementById('settingsBtn'),
             
             // Settings modal
@@ -145,6 +151,7 @@ class ChatInterface {
             clearHistoryBtn: document.getElementById('clearHistoryBtn'),
             
             // Loading spinner
+            scrollBottomBtn: document.getElementById('scrollBottomBtn'),
             loadingSpinner: document.querySelector('.loading-spinner')
         };
         
@@ -190,7 +197,6 @@ class ChatInterface {
         this.elements.closeSidebarBtn.addEventListener('click', () => this.toggleSidebar());
         this.elements.overlay.addEventListener('click', () => this.toggleSidebar());
         this.elements.newChatBtn.addEventListener('click', () => this.createNewChat());
-        this.elements.clearChatBtn.addEventListener('click', () => this.clearCurrentChat());
 
         // Settings
         this.elements.settingsBtn.addEventListener('click', () => this.toggleSettingsModal());
@@ -206,13 +212,30 @@ class ChatInterface {
             btn.addEventListener('click', () => this.handleFontSizeChange(btn.dataset.size));
         });
 
-        // No response speed setting anymore
+        // Scroll to bottom button
+        this.elements.scrollBottomBtn.addEventListener('click', () => this.scrollToBottom());
+        this.elements.chatContainer.addEventListener('scroll', () => this.handleScroll());
     }
 
     autoResizeTextarea() {
         const textarea = this.elements.messageInput;
         textarea.style.height = 'auto';
-        textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+        
+        // Calculate new height with a max limit
+        const newHeight = Math.min(textarea.scrollHeight, 200);
+        textarea.style.height = `${newHeight}px`;
+        
+        // Enable smooth scrolling if content exceeds max height
+        if (textarea.scrollHeight > 200) {
+            textarea.style.overflowY = 'auto';
+        } else {
+            textarea.style.overflowY = 'hidden';
+        }
+        
+        // Scroll to bottom of textarea when typing
+        if (textarea.scrollHeight > textarea.clientHeight) {
+            textarea.scrollTop = textarea.scrollHeight;
+        }
     }
 
     async handleSendMessage() {
@@ -230,6 +253,9 @@ class ChatInterface {
         this.isGenerating = true;
         this.elements.messageInput.value = '';
         this.autoResizeTextarea();
+        
+        // Initialize new AbortController
+        this.abortController = new AbortController();
         
         // Change send button to stop button
         this.updateSendButtonToStop(true);
@@ -301,7 +327,44 @@ class ChatInterface {
         this.elements.chatContainer.appendChild(messageDiv);
         this.scrollToBottom();
         
+        // Add continue button if it's an AI message
+        if (type === 'ai') {
+            const continueBtn = document.createElement('button');
+            continueBtn.className = 'continue-btn hidden';
+            continueBtn.innerHTML = '<i class="fas fa-arrow-right"></i> Continue generating';
+            messageDiv.appendChild(continueBtn);
+            
+            continueBtn.addEventListener('click', () => {
+                continueBtn.classList.add('hidden');
+                this.continueGeneration(messageDiv, this.chats[this.currentChatId].messages);
+            });
+        }
+        
         return messageDiv;
+    }
+
+    async continueGeneration(messageDiv, chatHistory) {
+        this.isProcessing = true;
+        this.isGenerating = true;
+        this.updateSendButtonToStop(true);
+        
+        const messageContent = messageDiv.querySelector('.message-content');
+        const continueBtn = messageDiv.querySelector('.continue-btn');
+        const lastResponse = messageContent.innerHTML;
+        
+        try {
+            await this.getAIResponse(null, chatHistory, lastResponse, messageDiv);
+        } catch (error) {
+            console.error('Error:', error);
+            if (error.name !== 'AbortError') {
+                this.createMessageElement('system', 'Sorry, there was an error. Please try again.');
+            }
+        } finally {
+            this.isProcessing = false;
+            this.isGenerating = false;
+            this.updateSendButtonToStop(false);
+            this.saveChats();
+        }
     }
 
     formatText(text) {
@@ -313,14 +376,38 @@ class ChatInterface {
             .replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
     }
 
-    async getAIResponse(userMessage) {
+    async getAIResponse(userMessage, existingHistory = null, lastResponse = null, existingMessageDiv = null) {
         const model = CONFIG.MODELS[this.currentModel];
-        const chatHistory = this.chats[this.currentChatId].messages;
+        const chatHistory = existingHistory || this.chats[this.currentChatId].messages;
         
-        // Enhanced contexts for both models
+        // Create or use existing message element
+        const messageDiv = existingMessageDiv || this.createMessageElement('ai', '');
+        const messageContent = messageDiv.querySelector('.message-content');
+        const continueBtn = messageDiv.querySelector('.continue-btn');
+        
+        if (!existingMessageDiv) {
+            messageContent.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+        }
+        
+        // Store scroll position and user scroll state
+        let isUserScrolling = false;
+        let lastScrollTop = this.elements.chatContainer.scrollTop;
+        
+        const handleScroll = () => {
+            const currentScrollTop = this.elements.chatContainer.scrollTop;
+            if (currentScrollTop !== lastScrollTop) {
+                isUserScrolling = true;
+                lastScrollTop = currentScrollTop;
+            }
+        };
+        
+        // Add scroll event listener
+        this.elements.chatContainer.addEventListener('scroll', handleScroll);
+
+        // Enhanced contexts with higher token limits
         const enhancedContext = this.currentModel === 'deepseek' ? 
-            `${model.context}\nPrevious conversation context: The user has been discussing ${this.chats[this.currentChatId].title}. Maintain consistent coding style and explanations.` :
-            `${model.context}\nPrevious conversation summary: ${this.chats[this.currentChatId].title}. Provide clear and concise explanations while maintaining context.`;
+            `${model.context}\nPrevious conversation context: ${this.chats[this.currentChatId].title}` :
+            `${model.context}\nPrevious conversation summary: ${this.chats[this.currentChatId].title}`;
         
         const messages = [
             { role: 'system', content: enhancedContext },
@@ -330,127 +417,153 @@ class ChatInterface {
             }))
         ];
 
-        // Use a higher max_tokens limit for longer responses
-        const maxTokens = 16384; // Increased from 8192
-        
-        // Create optimized model settings
-        const optimizedModel = {
-            ...model,
-            temperature: 0.7 // Balanced temperature for consistent responses
+        if (lastResponse) {
+            messages.push({ role: 'assistant', content: lastResponse });
+            messages.push({ role: 'user', content: 'Please continue the previous response.' });
+        }
+
+        const requestConfig = {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${CONFIG.API_KEY}`,
+                'HTTP-Referer': window.location.href
+            },
+            body: JSON.stringify({
+                model: model.id,
+                messages: messages,
+                temperature: model.temperature || 0.7,
+                top_p: model.top_p || 0.95,
+                max_tokens: 32768, // Increased from 16384
+                presence_penalty: model.presence_penalty || 0.1,
+                frequency_penalty: model.frequency_penalty || 0.1,
+                stream: true,
+                timeout: 180000, // Increased timeout to 3 minutes
+                retry_on_failure: true
+            }),
+            signal: this.abortController.signal
         };
-        
-        // Create AI message element
-        const messageDiv = this.createMessageElement('ai', '');
-        const messageContent = messageDiv.querySelector('.message-content');
-        messageContent.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
-        
-        try {
-            this.abortController = new AbortController();
-            
-            const response = await fetch(CONFIG.API_ENDPOINT, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${CONFIG.API_KEY}`,
-                    'HTTP-Referer': window.location.href
-                },
-                body: JSON.stringify({
-                    model: model.id,
-                    messages: messages,
-                    temperature: optimizedModel.temperature,
-                    stream: true,
-                    max_tokens: maxTokens,
-                    presence_penalty: 0.1, // Added to encourage more complete responses
-                    frequency_penalty: 0.1  // Added to encourage more varied content
-                }),
-                signal: this.abortController.signal
-            });
 
-            if (!response.ok) {
-                throw new Error(`API Error: ${response.status} - ${await response.text()}`);
-            }
+        // Add exponential backoff retry logic
+        const maxRetries = 3;
+        let retryCount = 0;
+        let delay = 1000;
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let responseText = '';
-            let buffer = '';
-            let firstChunk = true;
-
-            while (true) {
-                const { done, value } = await reader.read();
+        while (retryCount < maxRetries) {
+            try {
+                this.abortController = new AbortController();
                 
-                if (done) {
-                    // Process any remaining buffer content
-                    if (buffer) {
-                        try {
-                            const data = JSON.parse(buffer.slice(5));
-                            if (data.choices[0].delta?.content) {
-                                responseText += data.choices[0].delta.content;
-                            }
-                        } catch (e) {
-                            console.warn('Error parsing final buffer:', e);
-                        }
-                    }
-                    break;
+                const response = await fetch(CONFIG.API_ENDPOINT, requestConfig);
+
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} - ${await response.text()}`);
                 }
 
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let responseText = '';
+                let buffer = '';
+                let firstChunk = true;
 
-                for (const line of lines) {
-                    if (line.trim() === '' || line.trim() === 'data: [DONE]') continue;
+                // Add handler for stream interruption
+                let streamInterrupted = false;
+                let responseTimeout;
 
-                    if (line.startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(line.slice(5));
-                            if (data.choices[0].delta?.content) {
-                                const content = data.choices[0].delta.content;
-                                responseText += content;
-                                
-                                if (firstChunk) {
-                                    messageContent.innerHTML = '';
-                                    firstChunk = false;
+                const handleStreamTimeout = () => {
+                    if (!streamInterrupted && continueBtn) {
+                        streamInterrupted = true;
+                        continueBtn.classList.remove('hidden');
+                    }
+                };
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) {
+                        clearTimeout(responseTimeout);
+                        // Process any remaining buffer content
+                        if (buffer) {
+                            try {
+                                const data = JSON.parse(buffer.slice(5));
+                                if (data.choices[0].delta?.content) {
+                                    responseText += data.choices[0].delta.content;
                                 }
-                                
-                                this.updateStreamingMessage(messageDiv, responseText);
+                            } catch (e) {
+                                console.warn('Error parsing final buffer:', e);
                             }
-                        } catch (e) {
-                            console.warn('Error parsing chunk:', e);
-                            continue;
+                        }
+
+                        // Remove scroll listener
+                        this.elements.chatContainer.removeEventListener('scroll', handleScroll);
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (line.trim() === '' || line.trim() === 'data: [DONE]') continue;
+
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(5));
+                                if (data.choices[0].delta?.content) {
+                                    const content = data.choices[0].delta.content;
+                                    responseText += content;
+                                    
+                                    if (firstChunk) {
+                                        messageContent.innerHTML = '';
+                                        firstChunk = false;
+                                    }
+                                    
+                                    this.updateStreamingMessage(messageDiv, responseText);
+                                    
+                                    // Only auto-scroll if user was already at bottom
+                                    if (this.isAtBottom()) {
+                                        this.scrollToBottom();
+                                    }
+                                }
+                            } catch (e) {
+                                console.warn('Error parsing chunk:', e);
+                                continue;
+                            }
                         }
                     }
+
+                    // Reset timeout on each chunk
+                    clearTimeout(responseTimeout);
+                    responseTimeout = setTimeout(handleStreamTimeout, 5000);
                 }
-            }
 
-            // Save the complete message
-            if (responseText) {
-                this.chats[this.currentChatId].messages.push({
-                    type: 'ai',
-                    content: responseText
-                });
+                // Save the complete message if not interrupted
+                if (!streamInterrupted && responseText) {
+                    this.chats[this.currentChatId].messages.push({
+                        type: 'ai',
+                        content: responseText
+                    });
 
-                // Update chat title if it's the first message
-                if (this.chats[this.currentChatId].messages.length === 2) {
-                    this.updateChatTitle(responseText);
+                    // Update chat title if it's the first message
+                    if (this.chats[this.currentChatId].messages.length === 2) {
+                        this.updateChatTitle(responseText);
+                    }
                 }
-            }
 
-        } catch (error) {
-            if (error.name === 'AbortError') {
-                messageContent.innerHTML = '<em>Generation stopped.</em>';
-            } else {
-                console.error('API Error:', error);
-                messageContent.innerHTML = 'Error: Failed to get response. Please check your API key and try again.';
+                return;
+            } catch (error) {
+                if (error.name === 'AbortError' || retryCount === maxRetries - 1) {
+                    throw error;
+                }
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2;
+                retryCount++;
             }
-        } finally {
-            this.abortController = null;
-            this.saveChats();
         }
     }
 
     updateStreamingMessage(messageDiv, content) {
         const messageContent = messageDiv.querySelector('.message-content');
+        const wasAtBottom = this.isAtBottom();
         
         // Check if content contains code blocks
         if (content.includes('```')) {
@@ -482,7 +595,24 @@ class ChatInterface {
             messageContent.innerHTML = this.formatText(content);
         }
         
-        this.scrollToBottom();
+        // Only scroll if user was already at bottom
+        if (wasAtBottom) {
+            this.scrollToBottom();
+        }
+    }
+
+    isAtBottom() {
+        const container = this.elements.chatContainer;
+        const threshold = 100; // pixels from bottom
+        return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    }
+
+    scrollToBottom() {
+        const container = this.elements.chatContainer;
+        container.scrollTo({
+            top: container.scrollHeight,
+            behavior: 'smooth'
+        });
     }
 
     // Helper method to create a code block for incomplete code that's still streaming
@@ -607,6 +737,7 @@ class ChatInterface {
         };
         
         this.currentChatId = chatId;
+        localStorage.setItem('currentChatId', chatId);
         this.elements.chatContainer.innerHTML = '';
         this.updateChatList();
         this.saveChats();
@@ -620,34 +751,200 @@ class ChatInterface {
             chatItem.className = `chat-item ${chat.id === this.currentChatId ? 'active' : ''}`;
             chatItem.innerHTML = `
                 <i class="fas fa-message"></i>
-                <span class="chat-title">${chat.title}</span>
+                <div class="chat-title" contenteditable="false">${chat.title}</div>
                 <span class="chat-date">${this.formatDate(chat.id)}</span>
-                <button class="delete-chat-btn" title="Delete chat">
-                    <i class="fas fa-times"></i>
-                </button>
+                <div class="chat-actions">
+                    <button class="rename-chat-btn" title="Rename chat">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                    <button class="delete-chat-btn" title="Delete chat">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
             `;
+
+            const titleElement = chatItem.querySelector('.chat-title');
+
+            // Handle inline editing
+            titleElement.addEventListener('blur', () => {
+                const newTitle = titleElement.textContent.trim();
+                if (newTitle && newTitle !== chat.title) {
+                    chat.title = newTitle;
+                    this.saveChats();
+                }
+                titleElement.contentEditable = "false";
+                chatItem.classList.remove('editing');
+            });
+
+            titleElement.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    titleElement.blur();
+                }
+                if (e.key === 'Escape') {
+                    titleElement.textContent = chat.title;
+                    titleElement.blur();
+                }
+            });
+
+            // Mobile context menu
+            let touchTimeout;
+            chatItem.addEventListener('touchstart', () => {
+                touchTimeout = setTimeout(() => {
+                    this.showContextMenu(chat, chatItem);
+                }, 500);
+            });
+
+            chatItem.addEventListener('touchend', () => {
+                clearTimeout(touchTimeout);
+            });
+
+            chatItem.addEventListener('touchmove', () => {
+                clearTimeout(touchTimeout);
+            });
+
+            // Click handlers
+            chatItem.querySelector('.rename-chat-btn').onclick = (e) => {
+                e.stopPropagation();
+                titleElement.contentEditable = "true";
+                titleElement.focus();
+                chatItem.classList.add('editing');
+                // Select all text
+                const range = document.createRange();
+                range.selectNodeContents(titleElement);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+            };
+
+            chatItem.onclick = (e) => {
+                if (!chatItem.classList.contains('editing')) {
+                    this.loadChat(chat.id);
+                }
+            };
+
             chatItem.querySelector('.delete-chat-btn').onclick = (e) => {
                 e.stopPropagation();
                 this.deleteChat(chat.id);
             };
-            chatItem.onclick = () => this.loadChat(chat.id);
+
             this.elements.chatList.appendChild(chatItem);
         });
     }
 
+    showContextMenu(chat, element) {
+        const existingMenu = document.querySelector('.context-menu');
+        if (existingMenu) existingMenu.remove();
+
+        const menu = document.createElement('div');
+        menu.className = 'context-menu';
+        menu.innerHTML = `
+            <button class="context-menu-item rename">
+                <i class="fas fa-pen"></i> Rename
+            </button>
+            <button class="context-menu-item delete">
+                <i class="fas fa-trash"></i> Delete
+            </button>
+        `;
+
+        // Position menu relative to chat item
+        menu.style.position = 'absolute';
+        menu.style.left = '0';
+        menu.style.right = '0';
+
+        // Append menu to the chat item itself for proper positioning
+        element.appendChild(menu);
+
+        menu.querySelector('.rename').onclick = (e) => {
+            e.stopPropagation();
+            const titleElement = element.querySelector('.chat-title');
+            titleElement.contentEditable = "true";
+            titleElement.focus();
+            element.classList.add('editing');
+            menu.remove();
+            
+            // Select all text
+            const range = document.createRange();
+            range.selectNodeContents(titleElement);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        };
+
+        menu.querySelector('.delete').onclick = (e) => {
+            e.stopPropagation();
+            this.deleteChat(chat.id);
+            menu.remove();
+        };
+
+        // Close menu when clicking outside
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target) && !element.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        
+        document.addEventListener('click', closeMenu);
+    }
+
+    renameChat(chatId) {
+        const chat = this.chats[chatId];
+        const newTitle = prompt('Enter new chat title:', chat.title);
+        if (newTitle && newTitle.trim()) {
+            chat.title = newTitle.trim();
+            this.saveChats();
+            this.updateChatList();
+        }
+    }
+
     formatDate(timestamp) {
         const date = new Date(parseInt(timestamp));
-        return date.toLocaleDateString('en-US', { 
+        return date.toLocaleString('en-US', { 
             month: 'short', 
-            day: 'numeric'
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
         });
     }
 
     loadChat(chatId) {
         this.currentChatId = chatId;
+        localStorage.setItem('currentChatId', chatId);
         const chat = this.chats[chatId];
         this.elements.chatContainer.innerHTML = '';
-        chat.messages.forEach(msg => this.createMessageElement(msg.type, msg.content));
+        
+        chat.messages.forEach(msg => {
+            const messageDiv = this.createMessageElement(msg.type, '');
+            const messageContent = messageDiv.querySelector('.message-content');
+            
+            if (msg.type === 'ai' && msg.content.includes('```')) {
+                // Split content into text and code blocks
+                const parts = msg.content.split(/(```[\s\S]*?```)/g);
+                messageContent.innerHTML = '';
+                
+                parts.forEach(part => {
+                    if (part.startsWith('```') && part.endsWith('```')) {
+                        // Handle complete code blocks
+                        const match = part.match(/```([\w-]*)?\s*\n?([\s\S]*?)```/);
+                        if (match) {
+                            const codeBlock = this.createCodeBlock(part);
+                            messageContent.appendChild(codeBlock);
+                        }
+                    } else if (part.trim() !== '') {
+                        // Handle regular text
+                        const textNode = document.createElement('div');
+                        textNode.innerHTML = this.formatText(part);
+                        messageContent.appendChild(textNode);
+                    }
+                });
+            } else {
+                // Handle non-code messages
+                messageContent.innerHTML = msg.type === 'user' ? msg.content : this.formatText(msg.content);
+            }
+        });
+        
         this.updateChatList();
         this.toggleSidebar(false);
     }
@@ -698,6 +995,7 @@ class ChatInterface {
         if (confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
             this.chats = {};
             localStorage.removeItem('chats');
+            localStorage.removeItem('currentChatId');
             this.createNewChat();
             this.toggleSettingsModal();
         }
@@ -789,16 +1087,12 @@ class ChatInterface {
         this.saveSettings();
     }
 
-    scrollToBottom() {
-        // Only auto-scroll if user is already near the bottom
+    handleScroll() {
         const container = this.elements.chatContainer;
-        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+        const scrollOffset = container.scrollHeight - container.scrollTop - container.clientHeight;
+        const showScrollButton = scrollOffset > 100;
         
-        if (isNearBottom) {
-            requestAnimationFrame(() => {
-                container.scrollTop = container.scrollHeight;
-            });
-        }
+        this.elements.scrollBottomBtn.classList.toggle('visible', showScrollButton);
     }
 }
 
