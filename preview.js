@@ -136,10 +136,21 @@ class PreviewManager {
     }
 
     setPreviewSize(wrapper, size) {
+        const container = document.querySelector('.preview-container');
+        const containerRect = container.getBoundingClientRect();
+        const padding = 40; // Account for container padding
+        const maxWidth = containerRect.width - padding;
+        const maxHeight = containerRect.height - padding;
+        
+        // Calculate scale to fit
+        const scaleX = maxWidth / size.width;
+        const scaleY = maxHeight / size.height;
+        const scale = Math.min(scaleX, scaleY, 1); // Don't scale up if content is smaller
+        
         wrapper.style.width = size.width + 'px';
         wrapper.style.height = size.height + 'px';
-        this.zoomLevel = 1;
-        wrapper.style.transform = 'scale(1)';
+        this.zoomLevel = scale;
+        wrapper.style.transform = `scale(${scale})`;
     }
 
     updateDimensionDisplay(widthEl, heightEl, width, height) {
