@@ -107,9 +107,6 @@
                 </div>
 
                 <div class="header-actions">
-                    <button class="action-btn" id="clearChatBtn" title="Clear Chat">
-                        <i class="fas fa-trash"></i>
-                    </button>
                     <button class="action-btn" id="settingsBtn" title="Settings">
                         <i class="fas fa-gear"></i>
                     </button>
@@ -117,7 +114,14 @@
             </header>
 
             <!-- Chat Container -->
-            <div class="chat-container" id="chatContainer"></div>
+            <div class="chat-container" id="chatContainer">
+                <!-- Messages will be added here -->
+            </div>
+            
+            <!-- Scroll to bottom button -->
+            <button class="scroll-bottom" id="scrollBottomBtn" aria-label="Scroll to bottom">
+                <i class="fas fa-chevron-down"></i>
+            </button>
 
             <!-- Input Area -->
             <div class="input-area">
