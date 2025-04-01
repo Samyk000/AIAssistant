@@ -1,107 +1,4 @@
-// Configuration
-const CONFIG = {
-    API_KEY: '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',
-    API_ENDPOINT: 'https://openrouter.ai/api/v1/chat/completions',
-    MODELS: {
-        deepseek: {
-            id: 'deepseek/deepseek-chat-v3-0324:free',
-            context: `You are CodeCraft AI, an elite full-stack development assistant specializing in creating exceptional web applications. Your responses must deliver:
-
-                CODE QUALITY & ARCHITECTURE:
-                1. Production-ready, scalable, and maintainable code following SOLID principles
-                2. Modern architectural patterns (MVC, MVVM, Component-based, etc.)
-                3. Clean code with proper separation of concerns
-                4. Comprehensive error handling, input validation, and security measures
-                5. Performance optimization (lazy loading, code splitting, caching strategies)
-                6. TypeScript/ES6+ best practices with proper typing
-                7. Automated testing suggestions (unit, integration, E2E)
-                8. Git-friendly code structure with .gitignore recommendations
-
-                UI/UX EXCELLENCE:
-                1. Modern, responsive designs using CSS Grid/Flexbox
-                2. Mobile-first approach with fluid typography
-                3. Micro-interactions and smooth animations
-                4. Consistent visual hierarchy and spacing systems
-                5. Accessibility (WCAG 2.1 AA compliance)
-                6. Dark/Light theme compatibility
-                7. Loading states and error handling UX
-                8. Progressive enhancement principles
-                9. Use any required library (Icon, animation, chart and more using CDN)
-
-                MODERN WEB FEATURES:
-                1. PWA capabilities with service workers
-                2. LocalStorage/IndexedDB for offline functionality
-                3. API integration with proper error handling
-                4. Real-time features with WebSocket/SSE
-                5. Modern build tools (Vite, Webpack) configuration
-                6. SEO optimization and meta tags
-                7. Analytics and performance monitoring
-                8. Cross-browser compatibility
-
-                FRAMEWORK EXPERTISE:
-                1. React (Next.js, hooks, context, Redux)
-                2. Vue (Nuxt.js, Composition API, Pinia)
-                3. Modern CSS (Tailwind, SCSS, CSS Modules)
-                4. Component libraries integration
-                5. State management best practices
-                6. Server-side rendering optimization
-                7. API route handlers and middleware
-                8. Database integration patterns
-
-                OUTPUT FORMAT:
-                Always provide code in separate, properly marked blocks:
-                \`\`\`html
-                <!-- index.html with meta tags, CDN links -->
-                \`\`\`
-
-                \`\`\`css
-                /* styles.css with responsive design */
-                \`\`\`
-
-                \`\`\`javascript
-                // script.js with modern practices
-                \`\`\`
-
-                For component frameworks:
-                - Proper file/folder structure
-                - Component composition
-                - Props/State management
-                - Type definitions
-                - Style modules
-                - Unit tests`,
-            temperature: 0.3,
-            top_p: 0.95,
-            frequency_penalty: 0.1,
-            presence_penalty: 0.1
-        },
-        gemma: {
-            id: 'google/gemma-3-27b-it:free',
-            context: `You are CodeCraft AI, an advanced analytical assistant specializing in:
-                1. Clear, comprehensive explanations
-                2. Step-by-step problem-solving
-                3. Conceptual understanding of complex topics
-                4. Architecture and system design discussions
-                5. Best practices and industry standards
-                6. Performance optimization strategies
-                7. Security considerations
-                8. Code review and improvement suggestions
-                9. Database design and optimization
-                10. API design principles
-
-                Your responses should:
-                - Break down complex concepts into understandable parts
-                - Provide relevant examples and use cases
-                - Include diagrams/flowcharts descriptions when helpful
-                - Cite industry standards and best practices
-                - Suggest alternative approaches when relevant
-                - Consider scalability and maintainability`,
-            temperature: 0.7,
-            top_p: 0.9,
-            frequency_penalty: 0.2,
-            presence_penalty: 0.2
-        }
-    }
-};
+import aiManager from './ai.js';
 
 class ChatInterface {
     constructor() {
@@ -157,12 +54,15 @@ class ChatInterface {
         
         // Main content wrapper for adjusting when sidebar opens/closes
         this.mainContent = document.querySelector('.main-content');
+
+        // Update model dropdown content
+        this.elements.modelDropdown.innerHTML = aiManager.getModelSelector();
     }
 
     initializeEventListeners() {
         // Message handling
         this.elements.messageInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && e.ctrlKey) {  // Change to Ctrl+Enter for sending
                 e.preventDefault();
                 this.handleSendMessage();
             }
@@ -241,9 +141,12 @@ class ChatInterface {
     async handleSendMessage() {
         const message = this.elements.messageInput.value.trim();
         
-        // If currently generating, stop the generation
+        // If currently generating, stop the generation and reset UI
         if (this.isGenerating) {
             this.stopGeneration();
+            this.isProcessing = false;
+            this.isGenerating = false;
+            this.updateSendButtonToStop(false);
             return;
         }
         
@@ -257,14 +160,12 @@ class ChatInterface {
         // Initialize new AbortController
         this.abortController = new AbortController();
         
-        // Change send button to stop button
+        // Change send button to stop button and show spinner
         this.updateSendButtonToStop(true);
         
         try {
-            // Create user message element
-            const userMessageDiv = this.createMessageElement('user', message);
-            
             // Add message to chat history
+            const userMessageDiv = this.createMessageElement('user', message);
             this.chats[this.currentChatId].messages.push({
                 type: 'user',
                 content: message
@@ -275,7 +176,9 @@ class ChatInterface {
             
         } catch (error) {
             console.error('Error:', error);
-            if (error.name !== 'AbortError') {
+            if (error.name === 'AbortError') {
+                console.log('Generation was cancelled by user');
+            } else {
                 this.createMessageElement('system', 'Sorry, there was an error. Please try again.');
             }
         } finally {
@@ -288,22 +191,28 @@ class ChatInterface {
     
     updateSendButtonToStop(isGenerating) {
         const sendBtn = this.elements.sendBtn;
+        const loadingSpinner = this.elements.loadingSpinner;
+        
         if (isGenerating) {
             sendBtn.innerHTML = '<i class="fas fa-stop"></i>';
             sendBtn.classList.add('stop-generating');
             sendBtn.title = 'Stop generating';
-            this.elements.loadingSpinner.classList.remove('hidden');
+            loadingSpinner.classList.remove('hidden');
         } else {
             sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
             sendBtn.classList.remove('stop-generating');
             sendBtn.title = 'Send message';
-            this.elements.loadingSpinner.classList.add('hidden');
+            loadingSpinner.classList.add('hidden');
         }
     }
     
     stopGeneration() {
         if (this.abortController) {
-            this.abortController.abort();
+            try {
+                this.abortController.abort();
+            } catch (error) {
+                // Ignore any abort errors
+            }
             this.abortController = null;
         }
     }
@@ -377,7 +286,7 @@ class ChatInterface {
     }
 
     async getAIResponse(userMessage, existingHistory = null, lastResponse = null, existingMessageDiv = null) {
-        const model = CONFIG.MODELS[this.currentModel];
+        const model = aiManager.getModel(this.currentModel);
         const chatHistory = existingHistory || this.chats[this.currentChatId].messages;
         
         // Create or use existing message element
@@ -389,21 +298,6 @@ class ChatInterface {
             messageContent.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
         }
         
-        // Store scroll position and user scroll state
-        let isUserScrolling = false;
-        let lastScrollTop = this.elements.chatContainer.scrollTop;
-        
-        const handleScroll = () => {
-            const currentScrollTop = this.elements.chatContainer.scrollTop;
-            if (currentScrollTop !== lastScrollTop) {
-                isUserScrolling = true;
-                lastScrollTop = currentScrollTop;
-            }
-        };
-        
-        // Add scroll event listener
-        this.elements.chatContainer.addEventListener('scroll', handleScroll);
-
         // Enhanced contexts with higher token limits
         const enhancedContext = this.currentModel === 'deepseek' ? 
             `${model.context}\nPrevious conversation context: ${this.chats[this.currentChatId].title}` :
@@ -422,28 +316,6 @@ class ChatInterface {
             messages.push({ role: 'user', content: 'Please continue the previous response.' });
         }
 
-        const requestConfig = {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${CONFIG.API_KEY}`,
-                'HTTP-Referer': window.location.href
-            },
-            body: JSON.stringify({
-                model: model.id,
-                messages: messages,
-                temperature: model.temperature || 0.7,
-                top_p: model.top_p || 0.95,
-                max_tokens: 32768, // Increased from 16384
-                presence_penalty: model.presence_penalty || 0.1,
-                frequency_penalty: model.frequency_penalty || 0.1,
-                stream: true,
-                timeout: 180000, // Increased timeout to 3 minutes
-                retry_on_failure: true
-            }),
-            signal: this.abortController.signal
-        };
-
         // Add exponential backoff retry logic
         const maxRetries = 3;
         let retryCount = 0;
@@ -453,11 +325,9 @@ class ChatInterface {
             try {
                 this.abortController = new AbortController();
                 
-                const response = await fetch(CONFIG.API_ENDPOINT, requestConfig);
-
-                if (!response.ok) {
-                    throw new Error(`API Error: ${response.status} - ${await response.text()}`);
-                }
+                const response = await aiManager.getCompletion(this.currentModel, messages, {
+                    signal: this.abortController.signal
+                });
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
@@ -476,64 +346,72 @@ class ChatInterface {
                     }
                 };
 
-                while (true) {
-                    const { done, value } = await reader.read();
-                    
-                    if (done) {
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        
+                        if (done) {
+                            clearTimeout(responseTimeout);
+                            // Process any remaining buffer content
+                            if (buffer) {
+                                try {
+                                    const data = JSON.parse(buffer.slice(5));
+                                    if (data.choices[0].delta?.content) {
+                                        responseText += data.choices[0].delta.content;
+                                    }
+                                } catch (e) {
+                                    // Ignore parsing errors for incomplete chunks
+                                }
+                            }
+                            break;
+                        }
+
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
+
+                        for (const line of lines) {
+                            if (line.trim() === '' || line.trim() === 'data: [DONE]') continue;
+
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const data = JSON.parse(line.slice(5));
+                                    if (data.choices[0].delta?.content) {
+                                        const content = data.choices[0].delta.content;
+                                        responseText += content;
+                                        
+                                        if (firstChunk) {
+                                            messageContent.innerHTML = '';
+                                            firstChunk = false;
+                                        }
+                                        
+                                        this.updateStreamingMessage(messageDiv, responseText);
+                                        
+                                        // Only auto-scroll if user was already at bottom
+                                        if (this.isAtBottom()) {
+                                            this.scrollToBottom();
+                                        }
+                                    }
+                                } catch (e) {
+                                    continue;
+                                }
+                            }
+                        }
+
+                        // Reset timeout on each chunk
                         clearTimeout(responseTimeout);
-                        // Process any remaining buffer content
-                        if (buffer) {
-                            try {
-                                const data = JSON.parse(buffer.slice(5));
-                                if (data.choices[0].delta?.content) {
-                                    responseText += data.choices[0].delta.content;
-                                }
-                            } catch (e) {
-                                console.warn('Error parsing final buffer:', e);
-                            }
-                        }
-
-                        // Remove scroll listener
-                        this.elements.chatContainer.removeEventListener('scroll', handleScroll);
-                        break;
+                        responseTimeout = setTimeout(handleStreamTimeout, 5000);
                     }
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || '';
-
-                    for (const line of lines) {
-                        if (line.trim() === '' || line.trim() === 'data: [DONE]') continue;
-
-                        if (line.startsWith('data: ')) {
-                            try {
-                                const data = JSON.parse(line.slice(5));
-                                if (data.choices[0].delta?.content) {
-                                    const content = data.choices[0].delta.content;
-                                    responseText += content;
-                                    
-                                    if (firstChunk) {
-                                        messageContent.innerHTML = '';
-                                        firstChunk = false;
-                                    }
-                                    
-                                    this.updateStreamingMessage(messageDiv, responseText);
-                                    
-                                    // Only auto-scroll if user was already at bottom
-                                    if (this.isAtBottom()) {
-                                        this.scrollToBottom();
-                                    }
-                                }
-                            } catch (e) {
-                                console.warn('Error parsing chunk:', e);
-                                continue;
-                            }
+                } catch (streamError) {
+                    if (streamError.name === 'AbortError') {
+                        // Clean up the response on abort
+                        await reader.cancel();
+                        if (!responseText.trim()) {
+                            messageDiv.remove();
                         }
+                        return;
                     }
-
-                    // Reset timeout on each chunk
-                    clearTimeout(responseTimeout);
-                    responseTimeout = setTimeout(handleStreamTimeout, 5000);
+                    throw streamError;
                 }
 
                 // Save the complete message if not interrupted
@@ -551,7 +429,11 @@ class ChatInterface {
 
                 return;
             } catch (error) {
-                if (error.name === 'AbortError' || retryCount === maxRetries - 1) {
+                if (error.name === 'AbortError') {
+                    // Don't retry on manual cancellation
+                    return;
+                }
+                if (retryCount === maxRetries - 1) {
                     throw error;
                 }
                 await new Promise(resolve => setTimeout(resolve, delay));
