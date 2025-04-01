@@ -1,4 +1,107 @@
-import aiManager from './ai.js';
+// Configuration
+const CONFIG = {
+    API_KEY: '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',
+    API_ENDPOINT: 'https://openrouter.ai/api/v1/chat/completions',
+    MODELS: {
+        deepseek: {
+            id: 'deepseek/deepseek-chat-v3-0324:free',
+            context: `You are CodeCraft AI, an elite full-stack development assistant specializing in creating exceptional web applications. Your responses must deliver:
+
+                CODE QUALITY & ARCHITECTURE:
+                1. Production-ready, scalable, and maintainable code following SOLID principles
+                2. Modern architectural patterns (MVC, MVVM, Component-based, etc.)
+                3. Clean code with proper separation of concerns
+                4. Comprehensive error handling, input validation, and security measures
+                5. Performance optimization (lazy loading, code splitting, caching strategies)
+                6. TypeScript/ES6+ best practices with proper typing
+                7. Automated testing suggestions (unit, integration, E2E)
+                8. Git-friendly code structure with .gitignore recommendations
+
+                UI/UX EXCELLENCE:
+                1. Modern, responsive designs using CSS Grid/Flexbox
+                2. Mobile-first approach with fluid typography
+                3. Micro-interactions and smooth animations
+                4. Consistent visual hierarchy and spacing systems
+                5. Accessibility (WCAG 2.1 AA compliance)
+                6. Dark/Light theme compatibility
+                7. Loading states and error handling UX
+                8. Progressive enhancement principles
+                9. Use any required library (Icon, animation, chart and more using CDN)
+
+                MODERN WEB FEATURES:
+                1. PWA capabilities with service workers
+                2. LocalStorage/IndexedDB for offline functionality
+                3. API integration with proper error handling
+                4. Real-time features with WebSocket/SSE
+                5. Modern build tools (Vite, Webpack) configuration
+                6. SEO optimization and meta tags
+                7. Analytics and performance monitoring
+                8. Cross-browser compatibility
+
+                FRAMEWORK EXPERTISE:
+                1. React (Next.js, hooks, context, Redux)
+                2. Vue (Nuxt.js, Composition API, Pinia)
+                3. Modern CSS (Tailwind, SCSS, CSS Modules)
+                4. Component libraries integration
+                5. State management best practices
+                6. Server-side rendering optimization
+                7. API route handlers and middleware
+                8. Database integration patterns
+
+                OUTPUT FORMAT:
+                Always provide code in separate, properly marked blocks:
+                \`\`\`html
+                <!-- index.html with meta tags, CDN links -->
+                \`\`\`
+
+                \`\`\`css
+                /* styles.css with responsive design */
+                \`\`\`
+
+                \`\`\`javascript
+                // script.js with modern practices
+                \`\`\`
+
+                For component frameworks:
+                - Proper file/folder structure
+                - Component composition
+                - Props/State management
+                - Type definitions
+                - Style modules
+                - Unit tests`,
+            temperature: 0.3,
+            top_p: 0.95,
+            frequency_penalty: 0.1,
+            presence_penalty: 0.1
+        },
+        gemma: {
+            id: 'google/gemma-3-27b-it:free',
+            context: `You are CodeCraft AI, an advanced analytical assistant specializing in:
+                1. Clear, comprehensive explanations
+                2. Step-by-step problem-solving
+                3. Conceptual understanding of complex topics
+                4. Architecture and system design discussions
+                5. Best practices and industry standards
+                6. Performance optimization strategies
+                7. Security considerations
+                8. Code review and improvement suggestions
+                9. Database design and optimization
+                10. API design principles
+
+                Your responses should:
+                - Break down complex concepts into understandable parts
+                - Provide relevant examples and use cases
+                - Include diagrams/flowcharts descriptions when helpful
+                - Cite industry standards and best practices
+                - Suggest alternative approaches when relevant
+                - Consider scalability and maintainability`,
+            temperature: 0.7,
+            top_p: 0.9,
+            frequency_penalty: 0.2,
+            presence_penalty: 0.2
+        }
+    }
+};
 
 class ChatInterface {
     constructor() {
@@ -54,9 +157,6 @@ class ChatInterface {
         
         // Main content wrapper for adjusting when sidebar opens/closes
         this.mainContent = document.querySelector('.main-content');
-
-        // Update model dropdown content
-        this.elements.modelDropdown.innerHTML = aiManager.getModelSelector();
     }
 
     initializeEventListeners() {
@@ -286,7 +386,7 @@ class ChatInterface {
     }
 
     async getAIResponse(userMessage, existingHistory = null, lastResponse = null, existingMessageDiv = null) {
-        const model = aiManager.getModel(this.currentModel);
+        const model = CONFIG.MODELS[this.currentModel];
         const chatHistory = existingHistory || this.chats[this.currentChatId].messages;
         
         // Create or use existing message element
@@ -325,9 +425,31 @@ class ChatInterface {
             try {
                 this.abortController = new AbortController();
                 
-                const response = await aiManager.getCompletion(this.currentModel, messages, {
+                const response = await fetch(CONFIG.API_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${CONFIG.API_KEY}`,
+                        'HTTP-Referer': window.location.href
+                    },
+                    body: JSON.stringify({
+                        model: model.id,
+                        messages: messages,
+                        temperature: model.temperature || 0.7,
+                        top_p: model.top_p || 0.95,
+                        max_tokens: 32768,
+                        presence_penalty: model.presence_penalty || 0.1,
+                        frequency_penalty: model.frequency_penalty || 0.1,
+                        stream: true,
+                        timeout: 180000,
+                        retry_on_failure: true
+                    }),
                     signal: this.abortController.signal
                 });
+
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status}`);
+                }
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
