@@ -2,7 +2,7 @@ class PreviewManager {
     constructor() {
         this.presetSizes = {
             mobile: { width: 375, height: 667, icon: 'fa-mobile-screen', label: 'Mobile' },
-            tablet: { width: 768, height: 1024, icon: 'fa-tablet-screen', label: 'Tablet' },
+            tablet: { width: 768, height: 1024, icon: 'fa-tablet', label: 'Tablet' },
             laptop: { width: 1366, height: 768, icon: 'fa-laptop', label: 'Laptop' },
             desktop: { width: 1920, height: 1080, icon: 'fa-desktop', label: 'Desktop' }
         };
