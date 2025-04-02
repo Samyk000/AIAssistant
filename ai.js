@@ -1,6 +1,6 @@
 class AIModelManager {
     constructor() {
-        this.API_KEY = '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';
+        this.API_KEY = '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';
         this.API_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
         this.models = {
             deepseek: {
