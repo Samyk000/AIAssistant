@@ -1,107 +1,5 @@
-// Configuration
-const CONFIG = {
-    API_KEY: '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',
-    API_ENDPOINT: 'https://openrouter.ai/api/v1/chat/completions',
-    MODELS: {
-        deepseek: {
-            id: 'deepseek/deepseek-chat-v3-0324:free',
-            context: `You are CodeCraft AI, an elite full-stack development assistant specializing in creating exceptional web applications. Your responses must deliver:
-
-                CODE QUALITY & ARCHITECTURE:
-                1. Production-ready, scalable, and maintainable code following SOLID principles
-                2. Modern architectural patterns (MVC, MVVM, Component-based, etc.)
-                3. Clean code with proper separation of concerns
-                4. Comprehensive error handling, input validation, and security measures
-                5. Performance optimization (lazy loading, code splitting, caching strategies)
-                6. TypeScript/ES6+ best practices with proper typing
-                7. Automated testing suggestions (unit, integration, E2E)
-                8. Git-friendly code structure with .gitignore recommendations
-
-                UI/UX EXCELLENCE:
-                1. Modern, responsive designs using CSS Grid/Flexbox
-                2. Mobile-first approach with fluid typography
-                3. Micro-interactions and smooth animations
-                4. Consistent visual hierarchy and spacing systems
-                5. Accessibility (WCAG 2.1 AA compliance)
-                6. Dark/Light theme compatibility
-                7. Loading states and error handling UX
-                8. Progressive enhancement principles
-                9. Use any required library (Icon, animation, chart and more using CDN)
-
-                MODERN WEB FEATURES:
-                1. PWA capabilities with service workers
-                2. LocalStorage/IndexedDB for offline functionality
-                3. API integration with proper error handling
-                4. Real-time features with WebSocket/SSE
-                5. Modern build tools (Vite, Webpack) configuration
-                6. SEO optimization and meta tags
-                7. Analytics and performance monitoring
-                8. Cross-browser compatibility
-
-                FRAMEWORK EXPERTISE:
-                1. React (Next.js, hooks, context, Redux)
-                2. Vue (Nuxt.js, Composition API, Pinia)
-                3. Modern CSS (Tailwind, SCSS, CSS Modules)
-                4. Component libraries integration
-                5. State management best practices
-                6. Server-side rendering optimization
-                7. API route handlers and middleware
-                8. Database integration patterns
-
-                OUTPUT FORMAT:
-                Always provide code in separate, properly marked blocks:
-                \`\`\`html
-                <!-- index.html with meta tags, CDN links -->
-                \`\`\`
-
-                \`\`\`css
-                /* styles.css with responsive design */
-                \`\`\`
-
-                \`\`\`javascript
-                // script.js with modern practices
-                \`\`\`
-
-                For component frameworks:
-                - Proper file/folder structure
-                - Component composition
-                - Props/State management
-                - Type definitions
-                - Style modules
-                - Unit tests`,
-            temperature: 0.3,
-            top_p: 0.95,
-            frequency_penalty: 0.1,
-            presence_penalty: 0.1
-        },
-        gemma: {
-            id: 'google/gemma-3-27b-it:free',
-            context: `You are CodeCraft AI, an advanced analytical assistant specializing in:
-                1. Clear, comprehensive explanations
-                2. Step-by-step problem-solving
-                3. Conceptual understanding of complex topics
-                4. Architecture and system design discussions
-                5. Best practices and industry standards
-                6. Performance optimization strategies
-                7. Security considerations
-                8. Code review and improvement suggestions
-                9. Database design and optimization
-                10. API design principles
-
-                Your responses should:
-                - Break down complex concepts into understandable parts
-                - Provide relevant examples and use cases
-                - Include diagrams/flowcharts descriptions when helpful
-                - Cite industry standards and best practices
-                - Suggest alternative approaches when relevant
-                - Consider scalability and maintainability`,
-            temperature: 0.7,
-            top_p: 0.9,
-            frequency_penalty: 0.2,
-            presence_penalty: 0.2
-        }
-    }
-};
+import aiManager from './ai.js';
+import firebaseManager from './firebase.js';
 
 class ChatInterface {
     constructor() {
@@ -115,6 +13,9 @@ class ChatInterface {
         this.initializeElements();
         this.initializeEventListeners();
         
+        // Initialize Firebase auth state
+        firebaseManager.addAuthStateListener(user => this.handleAuthStateChange(user));
+        
         // If no current chat or chat doesn't exist, create new one
         if (!this.currentChatId || !this.chats[this.currentChatId]) {
             this.createNewChat();
@@ -122,6 +23,30 @@ class ChatInterface {
             this.loadChat(this.currentChatId);
         }
         this.applySettings();
+
+        // Initialize profile elements
+        this.elements.profileModal = document.getElementById('profileModal');
+        this.elements.closeProfileModal = document.getElementById('closeProfileModal');
+        this.elements.verifyEmailBtn = document.getElementById('verifyEmailBtn');
+        this.elements.logoutBtn = document.getElementById('logoutBtn');
+        
+        // Verify all required elements exist
+        this.verifyElements();
+    }
+
+    verifyElements() {
+        const requiredElements = {
+            profileModal: 'Profile modal',
+            closeProfileModal: 'Close profile modal button',
+            verifyEmailBtn: 'Verify email button',
+            logoutBtn: 'Logout button'
+        };
+
+        for (const [key, name] of Object.entries(requiredElements)) {
+            if (!this.elements[key]) {
+                console.error(`Required element missing: ${name}`);
+            }
+        }
     }
 
     initializeElements() {
@@ -157,6 +82,27 @@ class ChatInterface {
         
         // Main content wrapper for adjusting when sidebar opens/closes
         this.mainContent = document.querySelector('.main-content');
+
+        // Update model dropdown content
+        this.elements.modelDropdown.innerHTML = aiManager.getModelSelector();
+
+        // Update initial model state
+        const selectedOption = document.querySelector(`.model-option[data-model="${this.currentModel}"]`);
+        if (selectedOption) {
+            selectedOption.classList.add('active');
+        }
+        
+        // Add auth-related elements
+        this.elements.profileBtn = document.getElementById('profileBtn');
+        this.elements.authModal = document.getElementById('authModal');
+        this.elements.authForm = document.getElementById('authForm');
+        this.elements.authTitle = document.getElementById('authTitle');
+        this.elements.authError = document.getElementById('authError');
+        this.elements.closeAuthModal = document.getElementById('closeAuthModal');
+        this.elements.toggleAuthMode = document.getElementById('toggleAuthMode');
+        this.elements.forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+        
+        this.isSignUp = false;
     }
 
     initializeEventListeners() {
@@ -175,21 +121,28 @@ class ChatInterface {
             this.elements.modelDropdownBtn.classList.toggle('active');
             this.elements.modelDropdown.classList.toggle('active');
         });
-        
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.model-selector-wrapper')) {
+
+        this.elements.modelDropdown.addEventListener('click', (e) => {
+            const option = e.target.closest('.model-option');
+            if (option) {
+                const model = option.dataset.model;
+                // Update chat's model
+                if (this.currentChatId) {
+                    this.chats[this.currentChatId].model = model;
+                    this.saveChats();
+                }
+                this.switchModel(model);
                 this.elements.modelDropdownBtn.classList.remove('active');
                 this.elements.modelDropdown.classList.remove('active');
             }
         });
 
-        this.elements.modelOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                const model = option.dataset.model;
-                this.switchModel(model);
-                this.elements.modelDropdown.classList.remove('active');
+        // Close model dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.model-selector-wrapper')) {
                 this.elements.modelDropdownBtn.classList.remove('active');
-            });
+                this.elements.modelDropdown.classList.remove('active');
+            }
         });
 
         // Sidebar controls
@@ -215,6 +168,152 @@ class ChatInterface {
         // Scroll to bottom button
         this.elements.scrollBottomBtn.addEventListener('click', () => this.scrollToBottom());
         this.elements.chatContainer.addEventListener('scroll', () => this.handleScroll());
+        
+        // Auth-related listeners
+        this.elements.profileBtn.addEventListener('click', () => this.handleProfileClick());
+        this.elements.closeAuthModal.addEventListener('click', () => this.toggleAuthModal(false));
+        this.elements.toggleAuthMode.addEventListener('click', () => this.toggleAuthMode());
+        this.elements.forgotPasswordBtn.addEventListener('click', () => this.handleForgotPassword());
+        
+        this.elements.authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await this.handleAuthSubmit();
+        });
+
+        // Profile modal controls
+        document.getElementById('closeProfileModal').addEventListener('click', () => this.toggleProfileModal(false));
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            if (confirm('Are you sure you want to sign out?')) {
+                firebaseManager.signOut();
+                this.toggleProfileModal(false);
+            }
+        });
+        
+        document.getElementById('verifyEmailBtn').addEventListener('click', async () => {
+            const result = await firebaseManager.sendVerificationEmail();
+            if (result.success) {
+                alert('Verification email sent! Please check your inbox.');
+            } else {
+                alert('Error sending verification email. Please try again.');
+            }
+        });
+        
+        // Name editing
+        const editNameBtn = document.querySelector('.edit-btn');
+        editNameBtn.addEventListener('click', () => {
+            const nameSpan = document.getElementById('userName');
+            const currentName = nameSpan.textContent;
+            const newName = prompt('Enter your name:', currentName);
+            
+            if (newName && newName.trim() !== currentName) {
+                firebaseManager.updateUserProfile(newName.trim()).then(result => {
+                    if (result.success) {
+                        nameSpan.textContent = newName.trim();
+                    }
+                });
+            }
+        });
+    }
+
+    handleAuthStateChange(user) {
+        const profileBtn = this.elements.profileBtn;
+        if (user) {
+            profileBtn.classList.add('profile-btn-signed-in');
+            profileBtn.title = user.email;
+            
+            // Load user's chats from Firebase
+            this.loadUserChats();
+            
+            // Update verification badge
+            const emailVerified = document.getElementById('emailVerified');
+            emailVerified.classList.toggle('unverified', !user.emailVerified);
+            emailVerified.innerHTML = user.emailVerified ? 
+                '<i class="fas fa-check-circle"></i> Verified' : 
+                '<i class="fas fa-exclamation-circle"></i> Unverified';
+                
+            // Update profile info
+            document.getElementById('userEmail').textContent = user.email;
+            document.getElementById('userName').textContent = user.displayName || 'Set your name';
+            document.getElementById('joinDate').textContent = new Date(user.metadata.creationTime).toLocaleDateString();
+            
+            // Show/hide verify email button
+            const verifyEmailBtn = document.getElementById('verifyEmailBtn');
+            verifyEmailBtn.classList.toggle('hidden', user.emailVerified);
+        } else {
+            profileBtn.classList.remove('profile-btn-signed-in');
+            profileBtn.title = 'Sign In';
+        }
+    }
+
+    async handleAuthSubmit() {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const submitBtn = this.elements.authForm.querySelector('button[type="submit"]');
+        const spinner = submitBtn.querySelector('.loading-spinner');
+        
+        try {
+            submitBtn.disabled = true;
+            spinner.classList.remove('hidden');
+            
+            const result = this.isSignUp ? 
+                await firebaseManager.signUp(email, password) :
+                await firebaseManager.signIn(email, password);
+                
+            if (result.success) {
+                this.toggleAuthModal(false);
+                this.elements.authForm.reset();
+            } else {
+                this.showAuthError(result.error);
+            }
+        } finally {
+            submitBtn.disabled = false;
+            spinner.classList.add('hidden');
+        }
+    }
+
+    handleProfileClick() {
+        if (firebaseManager.isUserSignedIn()) {
+            this.toggleProfileModal(true);
+        } else {
+            this.toggleAuthModal(true);
+        }
+    }
+
+    toggleAuthModal(show = true) {
+        this.elements.authModal.classList.toggle('active', show);
+        if (show) {
+            document.getElementById('email').focus();
+        }
+    }
+
+    toggleAuthMode() {
+        this.isSignUp = !this.isSignUp;
+        this.elements.authTitle.textContent = this.isSignUp ? 'Create Account' : 'Sign In';
+        this.elements.toggleAuthMode.textContent = this.isSignUp ? 'Sign In Instead' : 'Create Account';
+        const submitBtn = this.elements.authForm.querySelector('button[type="submit"] span');
+        submitBtn.textContent = this.isSignUp ? 'Sign Up' : 'Sign In';
+        this.elements.authError.classList.add('hidden');
+    }
+
+    async handleForgotPassword() {
+        const email = document.getElementById('email').value;
+        if (!email) {
+            this.showAuthError('Please enter your email address');
+            return;
+        }
+        
+        const result = await firebaseManager.resetPassword(email);
+        if (result.success) {
+            alert('Password reset email sent. Please check your inbox.');
+        } else {
+            this.showAuthError(result.error);
+        }
+    }
+
+    showAuthError(message) {
+        const errorEl = this.elements.authError;
+        errorEl.textContent = message;
+        errorEl.classList.remove('hidden');
     }
 
     autoResizeTextarea() {
@@ -386,7 +485,9 @@ class ChatInterface {
     }
 
     async getAIResponse(userMessage, existingHistory = null, lastResponse = null, existingMessageDiv = null) {
-        const model = CONFIG.MODELS[this.currentModel];
+        // Get model from current chat
+        const currentModel = this.chats[this.currentChatId].model || this.currentModel;
+        const model = aiManager.getModel(currentModel);
         const chatHistory = existingHistory || this.chats[this.currentChatId].messages;
         
         // Create or use existing message element
@@ -399,7 +500,7 @@ class ChatInterface {
         }
         
         // Enhanced contexts with higher token limits
-        const enhancedContext = this.currentModel === 'deepseek' ? 
+        const enhancedContext = currentModel === 'deepseek' ? 
             `${model.context}\nPrevious conversation context: ${this.chats[this.currentChatId].title}` :
             `${model.context}\nPrevious conversation summary: ${this.chats[this.currentChatId].title}`;
         
@@ -425,31 +526,9 @@ class ChatInterface {
             try {
                 this.abortController = new AbortController();
                 
-                const response = await fetch(CONFIG.API_ENDPOINT, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${CONFIG.API_KEY}`,
-                        'HTTP-Referer': window.location.href
-                    },
-                    body: JSON.stringify({
-                        model: model.id,
-                        messages: messages,
-                        temperature: model.temperature || 0.7,
-                        top_p: model.top_p || 0.95,
-                        max_tokens: 32768,
-                        presence_penalty: model.presence_penalty || 0.1,
-                        frequency_penalty: model.frequency_penalty || 0.1,
-                        stream: true,
-                        timeout: 180000,
-                        retry_on_failure: true
-                    }),
+                const response = await aiManager.getCompletion(currentModel, messages, {
                     signal: this.abortController.signal
                 });
-
-                if (!response.ok) {
-                    throw new Error(`API Error: ${response.status}`);
-                }
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
@@ -736,7 +815,7 @@ class ChatInterface {
         this.chats[chatId] = {
             id: chatId,
             title: 'New Chat',
-            model: this.currentModel,
+            model: this.currentModel, // Save current model with chat
             messages: []
         };
         
@@ -956,29 +1035,48 @@ class ChatInterface {
     switchModel(model) {
         const previousModel = this.currentModel;
         this.currentModel = model;
-        const modelName = model === 'deepseek' ? 'DeepSeek' : 'Gemma';
-        const modelType = model === 'deepseek' ? 'Code Expert' : 'General AI';
+        
+        // Update model info
+        const modelConfig = aiManager.getModel(model);
+        const modelName = modelConfig.name;
+        const modelType = modelConfig.description;
         
         // Update UI elements
         this.elements.modelDropdownBtn.querySelector('.model-name').textContent = modelName;
         this.elements.modelDropdownBtn.querySelector('.model-type').textContent = modelType;
+        this.elements.modelDropdownBtn.querySelector('.model-icon i').className = modelConfig.icon;
         
+        // Update dropdown options
         this.elements.modelOptions.forEach(option => {
             option.classList.toggle('active', option.dataset.model === model);
+            option.querySelector('.check-icon').style.opacity = option.dataset.model === model ? '1' : '0';
         });
 
-        // Add model switch notification
+        // Add model switch notification and save state
         if (previousModel !== model) {
             this.addModelSwitchNotification(modelName);
+            localStorage.setItem('currentModel', model);
         }
     }
 
     addModelSwitchNotification(modelName) {
+        const existingNotification = document.querySelector('.model-switch-notification');
+        if (existingNotification) {
+            existingNotification.remove();
+        }
+
         const notificationDiv = document.createElement('div');
         notificationDiv.className = 'model-switch-notification';
-        notificationDiv.innerHTML = `<i class="fas fa-exchange-alt"></i> Switched to ${modelName}`;
-        this.elements.chatContainer.appendChild(notificationDiv);
-        this.scrollToBottom();
+        notificationDiv.innerHTML = `
+            <i class="fas fa-exchange-alt"></i>
+            Switched to ${modelName}
+        `;
+        document.body.appendChild(notificationDiv);
+
+        // Remove notification after animation ends
+        setTimeout(() => {
+            notificationDiv.remove();
+        }, 3000);
     }
 
     deleteChat(chatId) {
@@ -1036,8 +1134,26 @@ class ChatInterface {
         }
     }
 
-    saveChats() {
+    async saveChats() {
         localStorage.setItem('chats', JSON.stringify(this.chats));
+        
+        // If user is logged in, also save to Firebase
+        if (firebaseManager.isUserSignedIn()) {
+            await firebaseManager.saveUserChats(this.chats);
+        }
+    }
+
+    async loadUserChats() {
+        try {
+            const firebaseChats = await firebaseManager.loadUserChats();
+            if (firebaseChats) {
+                // Merge with local chats if needed
+                this.chats = { ...this.chats, ...firebaseChats };
+                this.updateChatList();
+            }
+        } catch (error) {
+            console.error('Error loading user chats:', error);
+        }
     }
 
     loadSettings() {
@@ -1097,6 +1213,37 @@ class ChatInterface {
         const showScrollButton = scrollOffset > 100;
         
         this.elements.scrollBottomBtn.classList.toggle('visible', showScrollButton);
+    }
+
+    toggleProfileModal(show = true) {
+        if (!this.elements.profileModal) {
+            console.error('Profile modal element not found');
+            return;
+        }
+        
+        this.elements.profileModal.classList.toggle('active', show);
+        
+        if (show) {
+            this.updateProfileStats();
+        }
+    }
+
+    async updateProfileStats() {
+        if (!firebaseManager.isUserSignedIn()) return;
+
+        const totalChats = document.getElementById('totalChats');
+        if (totalChats) {
+            totalChats.textContent = Object.keys(this.chats).length;
+        }
+        
+        try {
+            const userProfile = await firebaseManager.getUserProfile();
+            if (userProfile.success) {
+                // Update additional stats
+            }
+        } catch (error) {
+            console.error('Error updating profile stats:', error);
+        }
     }
 }
 
