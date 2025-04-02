@@ -24,9 +24,11 @@
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="profile.css">
     
     <!-- Defer loading scripts until DOM is ready -->
-    <script src="script.js" defer></script>
+    <script src="ai.js" type="module"></script>
+    <script src="script.js" type="module"></script>
     <script src="preview.js" defer></script>
 </head>
 <body data-theme="light" data-font-size="medium">
@@ -109,6 +111,9 @@
                 <div class="header-actions">
                     <button class="action-btn" id="settingsBtn" title="Settings">
                         <i class="fas fa-gear"></i>
+                    </button>
+                    <button class="action-btn" id="profileBtn" title="Profile">
+                        <i class="fas fa-user-circle"></i>
                     </button>
                 </div>
             </header>
@@ -206,6 +211,116 @@
             </div>
         </div>
     </div>
+
+    <!-- Auth Modal -->
+    <div class="modal auth-modal" id="authModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fas fa-user-circle"></i>
+                    <h3 id="authTitle">Sign In</h3>
+                </div>
+                <button class="close-modal" id="closeAuthModal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="auth-container">
+                <form id="authForm" class="auth-form">
+                    <div class="auth-error hidden" id="authError"></div>
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" required placeholder="Enter your email">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" required placeholder="Enter your password">
+                    </div>
+                    <button type="submit" class="auth-submit-btn">
+                        <span>Sign In</span>
+                        <div class="loading-spinner hidden"></div>
+                    </button>
+                    <div class="auth-links">
+                        <button type="button" class="text-btn" id="forgotPasswordBtn">Forgot Password?</button>
+                        <button type="button" class="text-btn" id="toggleAuthMode">Create Account</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div class="modal profile-modal" id="profileModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fas fa-user-circle"></i>
+                    <h3>Profile</h3>
+                </div>
+                <button class="close-modal" id="closeProfileModal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="profile-container">
+                <div class="profile-header">
+                    <div class="avatar-section">
+                        <div class="avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <button class="edit-avatar-btn">
+                            <i class="fas fa-camera"></i>
+                        </button>
+                    </div>
+                    <div class="user-info">
+                        <div class="info-group">
+                            <label>Name</label>
+                            <div class="editable-field">
+                                <span id="userName">Loading...</span>
+                                <button class="edit-btn"><i class="fas fa-pen"></i></button>
+                            </div>
+                        </div>
+                        <div class="info-group">
+                            <label>Email</label>
+                            <div class="email-field">
+                                <span id="userEmail">Loading...</span>
+                                <span id="emailVerified" class="verification-badge">
+                                    <i class="fas fa-check-circle"></i> Verified
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="profile-stats">
+                    <div class="stat-card">
+                        <i class="fas fa-message"></i>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalChats">0</span>
+                            <span class="stat-label">Total Chats</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-clock"></i>
+                        <div class="stat-info">
+                            <span class="stat-value" id="joinDate">-</span>
+                            <span class="stat-label">Join Date</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="profile-actions">
+                    <button class="verify-email-btn" id="verifyEmailBtn">
+                        <i class="fas fa-envelope"></i>
+                        Verify Email
+                    </button>
+                    <button class="danger-btn" id="logoutBtn">
+                        <i class="fas fa-sign-out-alt"></i>
+                        Sign Out
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add new script imports -->
+    <script src="firebase.js" type="module"></script>
 
 </body>
 </html>
