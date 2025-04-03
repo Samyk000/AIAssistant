@@ -22,6 +22,12 @@ class ChatInterface {
         } else {
             this.loadChat(this.currentChatId);
         }
+
+        // Show initial showcase if chat is empty
+        if (this.isChatEmpty() && window.modelShowcase) {
+            window.modelShowcase.createShowcase(this.currentModel);
+        }
+
         this.applySettings();
 
         // Initialize profile elements
@@ -113,7 +119,17 @@ class ChatInterface {
                 this.handleSendMessage();
             }
         });
-        this.elements.messageInput.addEventListener('input', () => this.autoResizeTextarea());
+        this.elements.messageInput.addEventListener('input', (e) => {
+            this.autoResizeTextarea();
+            
+            const showcase = document.querySelector('.model-showcase');
+            if (showcase && e.target.value.trim()) {
+                showcase.classList.add('exit');
+                setTimeout(() => showcase.remove(), 300);
+            } else if (!e.target.value.trim() && !showcase && !this.chats[this.currentChatId].messages.length) {
+                window.modelShowcase.createShowcase(this.currentModel);
+            }
+        });
         this.elements.sendBtn.addEventListener('click', () => this.handleSendMessage());
 
         // Model selection
@@ -340,6 +356,13 @@ class ChatInterface {
     async handleSendMessage() {
         const message = this.elements.messageInput.value.trim();
         
+        // Remove showcase when starting to type
+        const showcase = document.querySelector('.model-showcase');
+        if (showcase) {
+            showcase.classList.add('exit');
+            setTimeout(() => showcase.remove(), 300);
+        }
+        
         // If currently generating, stop the generation and reset UI
         if (this.isGenerating) {
             this.stopGeneration();
@@ -357,7 +380,7 @@ class ChatInterface {
         this.autoResizeTextarea();
         
         // Initialize new AbortController
-        this.abortController = new AbortController();
+        this.abortController = null;
         
         // Change send button to stop button and show spinner
         this.updateSendButtonToStop(true);
@@ -815,13 +838,19 @@ class ChatInterface {
         this.chats[chatId] = {
             id: chatId,
             title: 'New Chat',
-            model: this.currentModel, // Save current model with chat
+            model: this.currentModel,
             messages: []
         };
         
         this.currentChatId = chatId;
         localStorage.setItem('currentChatId', chatId);
         this.elements.chatContainer.innerHTML = '';
+        
+        // Show model examples for new chat
+        if (window.modelShowcase) {
+            window.modelShowcase.createShowcase(this.currentModel);
+        }
+        
         this.updateChatList();
         this.saveChats();
         this.toggleSidebar(false);
@@ -998,35 +1027,42 @@ class ChatInterface {
         const chat = this.chats[chatId];
         this.elements.chatContainer.innerHTML = '';
         
-        chat.messages.forEach(msg => {
-            const messageDiv = this.createMessageElement(msg.type, '');
-            const messageContent = messageDiv.querySelector('.message-content');
-            
-            if (msg.type === 'ai' && msg.content.includes('```')) {
-                // Split content into text and code blocks
-                const parts = msg.content.split(/(```[\s\S]*?```)/g);
-                messageContent.innerHTML = '';
-                
-                parts.forEach(part => {
-                    if (part.startsWith('```') && part.endsWith('```')) {
-                        // Handle complete code blocks
-                        const match = part.match(/```([\w-]*)?\s*\n?([\s\S]*?)```/);
-                        if (match) {
-                            const codeBlock = this.createCodeBlock(part);
-                            messageContent.appendChild(codeBlock);
-                        }
-                    } else if (part.trim() !== '') {
-                        // Handle regular text
-                        const textNode = document.createElement('div');
-                        textNode.innerHTML = this.formatText(part);
-                        messageContent.appendChild(textNode);
-                    }
-                });
-            } else {
-                // Handle non-code messages
-                messageContent.innerHTML = msg.type === 'user' ? msg.content : this.formatText(msg.content);
+        // Always show showcase for empty chats
+        if (!chat.messages || chat.messages.length === 0) {
+            if (window.modelShowcase) {
+                window.modelShowcase.createShowcase(chat.model || this.currentModel);
             }
-        });
+        } else {
+            chat.messages.forEach(msg => {
+                const messageDiv = this.createMessageElement(msg.type, '');
+                const messageContent = messageDiv.querySelector('.message-content');
+                
+                if (msg.type === 'ai' && msg.content.includes('```')) {
+                    // Split content into text and code blocks
+                    const parts = msg.content.split(/(```[\s\S]*?```)/g);
+                    messageContent.innerHTML = '';
+                    
+                    parts.forEach(part => {
+                        if (part.startsWith('```') && part.endsWith('```')) {
+                            // Handle complete code blocks
+                            const match = part.match(/```([\w-]*)?\s*\n?([\s\S]*?)```/);
+                            if (match) {
+                                const codeBlock = this.createCodeBlock(part);
+                                messageContent.appendChild(codeBlock);
+                            }
+                        } else if (part.trim() !== '') {
+                            // Handle regular text
+                            const textNode = document.createElement('div');
+                            textNode.innerHTML = this.formatText(part);
+                            messageContent.appendChild(textNode);
+                        }
+                    });
+                } else {
+                    // Handle non-code messages
+                    messageContent.innerHTML = msg.type === 'user' ? msg.content : this.formatText(msg.content);
+                }
+            });
+        }
         
         this.updateChatList();
         this.toggleSidebar(false);
@@ -1046,37 +1082,61 @@ class ChatInterface {
         this.elements.modelDropdownBtn.querySelector('.model-type').textContent = modelType;
         this.elements.modelDropdownBtn.querySelector('.model-icon i').className = modelConfig.icon;
         
-        // Update dropdown options
-        this.elements.modelOptions.forEach(option => {
-            option.classList.toggle('active', option.dataset.model === model);
-            option.querySelector('.check-icon').style.opacity = option.dataset.model === model ? '1' : '0';
+        // Clear all active states first
+        document.querySelectorAll('.model-option').forEach(option => {
+            option.classList.remove('active');
+            option.querySelector('.check-icon').style.opacity = '0';
         });
+        
+        // Set active state for selected model
+        const selectedOption = document.querySelector(`.model-option[data-model="${model}"]`);
+        if (selectedOption) {
+            selectedOption.classList.add('active');
+            selectedOption.querySelector('.check-icon').style.opacity = '1';
+        }
 
-        // Add model switch notification and save state
+        // Update showcase if chat is empty
+        if (!this.chats[this.currentChatId]?.messages?.length) {
+            const existingShowcase = document.querySelector('.model-showcase');
+            if (existingShowcase) {
+                existingShowcase.classList.add('exit');
+                setTimeout(() => {
+                    existingShowcase.remove();
+                    if (window.modelShowcase) {
+                        window.modelShowcase.createShowcase(model);
+                    }
+                }, 300);
+            } else if (window.modelShowcase) {
+                window.modelShowcase.createShowcase(model);
+            }
+        }
+
+        // Save state
         if (previousModel !== model) {
-            this.addModelSwitchNotification(modelName);
+            this.showModelSwitchNotification(modelName);
             localStorage.setItem('currentModel', model);
         }
     }
 
-    addModelSwitchNotification(modelName) {
+    showModelSwitchNotification(modelName) {
         const existingNotification = document.querySelector('.model-switch-notification');
         if (existingNotification) {
             existingNotification.remove();
         }
 
-        const notificationDiv = document.createElement('div');
-        notificationDiv.className = 'model-switch-notification';
-        notificationDiv.innerHTML = `
+        const notification = document.createElement('div');
+        notification.className = 'model-switch-notification';
+        notification.innerHTML = `
             <i class="fas fa-exchange-alt"></i>
             Switched to ${modelName}
         `;
-        document.body.appendChild(notificationDiv);
+        document.body.appendChild(notification);
 
-        // Remove notification after animation ends
-        setTimeout(() => {
-            notificationDiv.remove();
-        }, 3000);
+        setTimeout(() => notification.remove(), 3000);
+    }
+
+    isChatEmpty() {
+        return !this.chats[this.currentChatId]?.messages?.length;
     }
 
     deleteChat(chatId) {
@@ -1244,6 +1304,21 @@ class ChatInterface {
         } catch (error) {
             console.error('Error updating profile stats:', error);
         }
+    }
+
+    handleExampleClick(prompt) {
+        if (!prompt) return;
+        
+        // Remove existing showcase
+        const showcase = document.querySelector('.model-showcase');
+        if (showcase) {
+            showcase.classList.add('exit');
+            setTimeout(() => showcase.remove(), 300);
+        }
+        
+        // Set prompt in input and send
+        this.elements.messageInput.value = prompt;
+        this.handleSendMessage();
     }
 }
 
