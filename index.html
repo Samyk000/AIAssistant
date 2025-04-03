@@ -23,13 +23,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="profile.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/profile.css">
+    <link rel="stylesheet" href="css/showcase.css">
     
     <!-- Defer loading scripts until DOM is ready -->
-    <script src="ai.js" type="module"></script>
-    <script src="script.js" type="module"></script>
-    <script src="preview.js" defer></script>
+    <script src="js/ai.js" type="module"></script>
+    <script src="js/script.js" type="module"></script>
+    <script src="js/preview.js" defer></script>
+    <script src="js/showcase.js" defer></script>
 </head>
 <body data-theme="light" data-font-size="medium">
     <!-- Overlay -->
@@ -100,6 +102,18 @@
                                     <div class="model-details">
                                         <span class="model-title">Gemma</span>
                                         <span class="model-desc">General knowledge & analysis</span>
+                                    </div>
+                                </div>
+                                <i class="fas fa-check check-icon"></i>
+                            </div>
+                            <div class="model-option" data-model="showcase">
+                                <div class="model-info">
+                                    <div class="model-icon">
+                                        <i class="fas fa-lightbulb"></i>
+                                    </div>
+                                    <div class="model-details">
+                                        <span class="model-title">Showcase</span>
+                                        <span class="model-desc">Creative ideas & inspiration</span>
                                     </div>
                                 </div>
                                 <i class="fas fa-check check-icon"></i>
@@ -320,7 +334,7 @@
     </div>
     
     <!-- Add new script imports -->
-    <script src="firebase.js" type="module"></script>
+    <script src="js/firebase.js" type="module"></script>
 
 </body>
 </html>
