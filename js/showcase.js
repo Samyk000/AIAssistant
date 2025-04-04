@@ -4,27 +4,55 @@ class ModelShowcase {
             deepseek: {
                 title: "Create Something Amazing",
                 description: "👾",
+                modelDescription: "Specialized in creating polished web applications with modern UI/UX, animations, and robust functionality. Choose any from the below and see the preview.",
                 examples: [
                     {
-                        icon: 'fas fa-cube',
-                        title: '3D Product Card',
-                        description: 'Interactive product showcase with stunning effects',
-                        prompt: `Create a stunning 3D product card with these features:
+                        icon: 'fas fa-globe',
+                        title: 'Modern Landing',
+                        description: 'Premium SaaS landing page',
+                        prompt: `Create a modern SaaS landing page with these features:
 
-- Floating product with realistic 3D transform
-- Interactive rotation on mouse move
-- Beautiful gradient glass-card design
-- Feature list with animated icons
-- Price tag with purchase button
-- Product image with reflection
-- Particle effects on hover
-- Color switcher with smooth transitions
-- Responsive design that works on mobile
+Hero Section:
+- Animated gradient background with floating elements
+- 3D product mockup with hover effects
+- Large heading with gradient text and typing animation
+- Transparent navbar with blur effect
+- CTA button with hover animation
+- Mouse trail particle effect
 
-Use vanilla JavaScript and modern CSS only.
-Focus on smooth animations and 3D effects.
-Keep it clean, beautiful, and highly interactive.
-Deliver a single HTML file that works instantly.`
+Feature Section:
+- 3x3 feature grid with hover cards
+- Icon animations on scroll
+- Clean typography and spacing
+- Smooth reveal animations
+
+Pricing Section:
+- 3 pricing tiers with popular tag
+- Interactive pricing cards with hover effects
+- Feature comparison list
+- Animated checkmark icons
+
+Testimonials:
+- Customer review slider/carousel
+- Profile images with glow effect
+- Star rating animations
+- Auto-scrolling logos section
+
+Newsletter:
+- Floating label inputs
+- Success/error animations
+- Background pattern animation
+
+Colors & Style:
+- Primary: #4F46E5 (indigo)
+- Accent: #9333EA (purple)
+- Gradients and glass effects
+- Modern sans-serif typography
+- Responsive on all devices
+
+Focus on smooth animations and premium feel.
+Deliver in a single HTML file with internal CSS/JS.
+Use only Font Awesome CDN for icons.`
                     },
                     {
                         icon: 'fas fa-wand-magic-sparkles',
@@ -52,40 +80,64 @@ Focus on visual impact and smooth interactions.
 Use minimal external resources (only Font Awesome CDN).`
                     },
                     {
-                        icon: 'fas fa-wand-sparkles',
-                        title: 'Interactive Clock',
-                        description: 'Stunning animated clock with particle effects',
-                        prompt: `Create a beautiful interactive clock with these features:
+                        icon: 'fas fa-shop',
+                        title: 'Modern E-commerce',
+                        description: 'Luxury fashion store homepage',
+                        prompt: `Create a luxury fashion e-commerce homepage:
 
-- Elegant analog clock with smooth movement
-- Floating numbers with gradient glow
-- Particle trails following clock hands
-- Interactive ripple effects on click/touch
-- Real-time digital display with fade animations
-- Beautiful gradient background that shifts with time
-- Animated date display
-- Subtle shadow and depth effects
-- Dark/light mode support
-- Mobile responsive design
+1. Navigation Structure:
+- Main logo on left
+- Category mega menu with smooth dropdown
+- Search with auto-suggestions
+- User account and cart with item count
+- Sticky header on scroll
 
-Use vanilla JavaScript and CSS only.
-Focus on smooth animations and visual polish.
-Keep it minimal but extremely beautiful.
-Make it work instantly in a single HTML file.
+2. Hero Section:
+- Full-width gradient animation background
+- Featured product with 3D tilt
+- Shop now button with hover effect
+- Scroll indicator animation
 
-Extra requirements:
-- Custom CSS variables for all colors
-- 60fps smooth animations
-- Clean modern typography
-- Perfect center alignment
-- Hover effects on interactive elements
-- Subtle ambient background animation`
+3. Product Showcase:
+- 2x3 grid of trending items
+- Quick view overlay on hover
+- Price and rating display
+- Add to cart animation
+- Product cards with subtle hover lift
+
+4. Categories Section:
+- 4 main categories with background images
+- Overlay text with elegant typography
+- Zoom effect on hover
+- Category labels with gradient borders
+
+5. Features Bar:
+- Free shipping indicator
+- Money-back guarantee
+- 24/7 support
+- Secure checkout badge
+
+6. Newsletter:
+- Floating input design
+- Subscribe button with gradient
+- Success animation
+- Privacy policy link
+
+Style Requirements:
+- Black and gold luxury theme
+- Glass effect cards
+- Consistent spacing
+- Responsive breakpoints
+- Smooth page load animations
+
+Deliver as single HTML file. Focus on premium feel and smooth interactions.`
                     }
                 ]
             },
             gemma: {
                 title: "Personal Growth & Insights",
-                description: "Your companion for self-discovery and transformation",
+                description: "Your companion for self-discovery",
+                modelDescription: "An empathetic guide for personal development, helping you explore self-awareness, transform limiting beliefs, and discover your authentic path.",
                 examples: [
                     {
                         icon: 'fas fa-mask',
@@ -123,6 +175,9 @@ Extra requirements:
         const showcase = document.createElement('div');
         showcase.className = 'model-showcase';
         showcase.innerHTML = `
+            <div class="model-showcase-header">
+                <p class="model-type-description">${this.modelExamples[model].modelDescription}</p>
+            </div>
             <div class="model-showcase-grid">
                 ${modelData.examples.map(example => `
                     <div class="showcase-card" data-prompt="${example.prompt}">
